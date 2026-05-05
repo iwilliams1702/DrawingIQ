@@ -1,6 +1,8 @@
-from dotenv import load_dotenv
-load_dotenv()
-
+import streamlit as st
+import os
+for key in ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "APP_URL"]:
+    if key in st.secrets:
+        os.environ[key] = st.secrets[key]
 """
 app.py — DrawingIQ Main Application
 Enterprise Engineering Drawing Analyzer
