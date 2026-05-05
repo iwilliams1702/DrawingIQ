@@ -1,0 +1,20 @@
+# DrawingIQ — requirements.txt
+# Install with: pip install -r requirements.txt
+
+# Core
+streamlit>=1.35.0
+openai>=1.30.0
+
+# Database & Auth
+supabase>=2.4.0
+
+# Payments
+stripe>=9.0.0
+
+# PDF support (install BOTH — app tries pdf2image first, falls back to pymupdf)
+pdf2image>=1.17.0
+pymupdf>=1.24.0          # also provides fitz import
+
+# Utilities
+python-dotenv>=1.0.0     # loads .env file
+Pillow>=10.0.0           # image processing
