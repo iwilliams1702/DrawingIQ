@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-for key in ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "APP_URL"]:
+for key in ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "APP_URL", "SUPABASE_SERVICE_KEY"]:
     if key in st.secrets:
         os.environ[key] = st.secrets[key]
 
