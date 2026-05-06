@@ -500,8 +500,8 @@ elif page == "📋 History":
                     </div>
                     <div style="text-align:right;font-size:0.78rem;">
                         <div style="color:#6b7280;">{dt}</div>
-                        {'<span style="color:#dc2626;font-weight:600;">⚠ '+str(crit)+' critical</span>' if crit else ''}
-                        {('<span style="color:#d97706;"> '+str(warn)+' warn</span>') if warn else ''}
+                        {"<div style='color:#dc2626;font-weight:600;'>⚠ " + str(crit) + " critical</div>" if crit else ""}
+                        {"<div style='color:#d97706;font-weight:600;'>⚠ " + str(warn) + " warning</div>" if warn else ""}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
