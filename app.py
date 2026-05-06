@@ -492,19 +492,21 @@ elif page == "📋 History":
             with col1:
                 st.markdown(f"""
                 <div class="history-row">
-                    <div>
-                        <div style="font-weight:600;color:#0f172a;font-size:0.92rem;">{html_lib.escape(str(a.get('filename','')))}</div>
-                        <div style="font-size:0.78rem;color:#6b7280;margin-top:2px;">
-                            {html_lib.escape(str(a.get('drawing_type','—')))} · {html_lib.escape(str(a.get('part_name','—')))} · {html_lib.escape(str(a.get('material','—')))}
-                        </div>
+                  <div>
+                     <div style="font-weight:600;color:#0f172a;font-size:0.92rem;">
+                          {html_lib.escape(str(a.get('filename','')))}
+                     </div>
+                     <div style="font-size:0.78rem;color:#6b7280;margin-top:2px;">
+                           {html_lib.escape(str(a.get('drawing_type','—')))} · {html_lib.escape(str(a.get('part_name','—')))} · {html_lib.escape(str(a.get('material','—')))}
+                     </div>
                     </div>
-                    <div style="text-align:right;font-size:0.78rem;">
-                        <div style="color:#6b7280;">{dt}</div>
-                     {("⚠ " + str(crit) + " critical") if crit else ""}
-                     {("⚠ " + str(warn) + " warning") if warn else ""}   
-                    </div>
-                    </div>
-                        """, unsafe_allow_html=True)
+                 <div style="text-align:right;font-size:0.78rem;">
+                    <div style="color:#6b7280;">{dt}</div>
+                    {("⚠ " + str(crit) + " critical<br>" if crit else "")}
+                    {("⚠ " + str(warn) + " warning" if warn else "")}
+                 </div>
+                </div>
+            """, unsafe_allow_html=True)
                     
             with col2:
                 if st.button(f"View", key=f"view_{a['id']}", use_container_width=True):
