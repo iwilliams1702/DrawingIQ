@@ -4,8 +4,7 @@ for key in ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "APP_URL", "S
     if key in st.secrets:
         os.environ[key] = st.secrets[key]
 
-import streamlit as st
-import os
+
 import json
 import io
 import csv
