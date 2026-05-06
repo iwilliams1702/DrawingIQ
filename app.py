@@ -624,9 +624,7 @@ elif page == "⚙ Account":
             st.success("Profile updated!")
     with col2:
         st.markdown("### API Keys")
-        st.text_input("OpenAI API Key", type="password",
-            value=os.getenv("OPENAI_API_KEY", ""),
-            help="Set OPENAI_API_KEY in your Streamlit secrets for permanent storage.")
+        st.info("🔒 API keys are managed securely via Streamlit Secrets.")
         st.caption("API keys are never stored in our database.")
 
         st.markdown("### Current Plan")
