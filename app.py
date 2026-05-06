@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import html as html_lib
 for key in ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "APP_URL", "SUPABASE_SERVICE_KEY"]:
     if key in st.secrets:
         os.environ[key] = st.secrets[key]
@@ -131,9 +132,11 @@ if not profile:
 
 plan        = profile.get("plan", "free")
 limits      = get_plan_limits(plan)
-plan_badge  = f'<span class="plan-badge badge-{plan}">{plan.upper()}</span>'
+plan_badge  = f'<span class="plan-badge badge-{plan}">{html_lib.escape(plan.upper())}</span>'
 user_name   = profile.get("full_name") or profile.get("email", "User")
 user_initials = "".join([p[0].upper() for p in user_name.split()[:2]])
+safe_name     = html_lib.escape(user_name)
+safe_initials = html_lib.escape(user_initials)
 
 st.markdown(f"""
 <div class="app-header">
@@ -146,8 +149,8 @@ st.markdown(f"""
         {plan_badge}
     </div>
     <div style="display:flex;align-items:center;gap:0.75rem;font-size:0.85rem;color:#4a6fa5;">
-        <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:0.8rem;">{user_initials}</div>
-        <span style="color:#7aa2d4;">{user_name}</span>
+        <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:0.8rem;">{safe_initials}</div>
+        <span style="color:#7aa2d4;">{safe_name}</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -209,16 +212,16 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
     dims     = result.get("dimensions", [])
     conf     = result.get("confidence_score", 0)
 
-    dtype = result.get("drawing_type", "Unknown")
+    dtype = html_lib.escape(str(result.get("drawing_type", "Unknown")))
     st.markdown(f'<span class="drawing-type-tag">{dtype}</span>', unsafe_allow_html=True)
 
     st.markdown(f"""
     <div class="metric-strip">
-        <div class="metric-box"><div class="label">Part</div><div class="value small">{result.get("part_name","—")}</div></div>
-        <div class="metric-box"><div class="label">P/N</div><div class="value small">{result.get("part_number") or "—"}</div></div>
-        <div class="metric-box"><div class="label">Rev</div><div class="value small">{result.get("revision") or "—"}</div></div>
-        <div class="metric-box"><div class="label">Material</div><div class="value small">{result.get("material","—")}</div></div>
-        <div class="metric-box"><div class="label">Complexity</div><div class="value small">{result.get("estimated_complexity","—")}</div></div>
+        <div class="metric-box"><div class="label">Part</div><div class="value small">{html_lib.escape(str(result.get("part_name","—")))}</div></div>
+        <div class="metric-box"><div class="label">P/N</div><div class="value small">{html_lib.escape(str(result.get("part_number") or "—"))}</div></div>
+        <div class="metric-box"><div class="label">Rev</div><div class="value small">{html_lib.escape(str(result.get("revision") or "—"))}</div></div>
+        <div class="metric-box"><div class="label">Material</div><div class="value small">{html_lib.escape(str(result.get("material","—")))}</div></div>
+        <div class="metric-box"><div class="label">Complexity</div><div class="value small">{html_lib.escape(str(result.get("estimated_complexity","—")))}</div></div>
         <div class="metric-box"><div class="label">Confidence</div><div class="value">{conf}%</div></div>
         <div class="metric-box"><div class="label">Flags</div>
             <div class="value small" style="color:{'#dc2626' if critical else '#16a34a'}">{len(critical)}c · {len(warnings)}w</div>
@@ -234,15 +237,15 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
         if critical:
             st.markdown("**Critical**")
             for f in critical:
-                st.markdown(f'<div class="flag-item flag-critical"><strong>{f.get("category","")}</strong>: {f.get("description","")}<br><span style="color:#6b7280;font-size:0.82rem;">→ {f.get("recommendation","")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="flag-item flag-critical"><strong>{html_lib.escape(str(f.get("category","")))}</strong>: {html_lib.escape(str(f.get("description","")))}<br><span style="color:#6b7280;font-size:0.82rem;">→ {html_lib.escape(str(f.get("recommendation","")))}</span></div>', unsafe_allow_html=True)
         if warnings:
             st.markdown("**Warnings**")
             for f in warnings:
-                st.markdown(f'<div class="flag-item flag-warning"><strong>{f.get("category","")}</strong>: {f.get("description","")}<br><span style="color:#6b7280;font-size:0.82rem;">→ {f.get("recommendation","")}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="flag-item flag-warning"><strong>{html_lib.escape(str(f.get("category","")))}</strong>: {html_lib.escape(str(f.get("description","")))}<br><span style="color:#6b7280;font-size:0.82rem;">→ {html_lib.escape(str(f.get("recommendation","")))}</span></div>', unsafe_allow_html=True)
         if info_f:
             st.markdown("**Info**")
             for f in info_f:
-                st.markdown(f'<div class="flag-item flag-info"><strong>{f.get("category","")}</strong>: {f.get("description","")}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="flag-item flag-info"><strong>{html_lib.escape(str(f.get("category","")))}</strong>: {html_lib.escape(str(f.get("description","")))}</div>', unsafe_allow_html=True)
         concerns = result.get("manufacturing_concerns", [])
         if concerns:
             st.markdown("---\n**Manufacturing Concerns**")
@@ -251,7 +254,7 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
     with tab2:
         if dims:
             rows = "".join([
-                f'<tr class="{"critical-row" if d.get("is_critical") else ""}"><td>{d.get("feature","")}</td><td>{d.get("value","")}</td><td>{d.get("tolerance") or "—"}</td><td>{d.get("unit","")}</td><td>{"🔴" if d.get("is_critical") else ""}</td></tr>'
+                f'<tr class="{"critical-row" if d.get("is_critical") else ""}"><td>{html_lib.escape(str(d.get("feature","")))}</td><td>{html_lib.escape(str(d.get("value","")))}</td><td>{html_lib.escape(str(d.get("tolerance") or "—"))}</td><td>{html_lib.escape(str(d.get("unit","")))}</td><td>{"🔴" if d.get("is_critical") else ""}</td></tr>'
                 for d in dims
             ])
             st.markdown(f'<table class="dim-table"><thead><tr><th>Feature</th><th>Value</th><th>Tolerance</th><th>Unit</th><th></th></tr></thead><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
@@ -270,13 +273,13 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
     with tab3:
         note = result.get("machinist_notes", "")
         if note:
-            st.markdown(f'<div class="result-card"><p style="line-height:1.9;color:#374151;">{note}</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="result-card"><p style="line-height:1.9;color:#374151;">{html_lib.escape(str(note))}</p></div>', unsafe_allow_html=True)
         procs = result.get("recommended_processes", [])
         if procs:
             st.markdown("**Recommended Processes**")
             cols = st.columns(min(len(procs), 4))
             for i, p in enumerate(procs):
-                cols[i % len(cols)].markdown(f'<div style="background:#eff6ff;border-radius:6px;padding:0.5rem 0.8rem;font-size:0.83rem;text-align:center;font-weight:500;color:#1d4ed8;">{p}</div>', unsafe_allow_html=True)
+                cols[i % len(cols)].markdown(f'<div style="background:#eff6ff;border-radius:6px;padding:0.5rem 0.8rem;font-size:0.83rem;text-align:center;font-weight:500;color:#1d4ed8;">{html_lib.escape(str(p))}</div>', unsafe_allow_html=True)
         standards = result.get("standards_referenced", [])
         if standards:
             st.markdown("**Standards Referenced:** " + " · ".join([f"`{s}`" for s in standards]))
@@ -289,7 +292,7 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
             ("Heat Treatment", "heat_treatment"), ("Weight Estimate", "weight_estimate"),
         ]
         rows = "".join([
-            f'<tr><td style="color:#6b7280;font-size:0.83rem;padding:7px 10px;">{label}</td><td style="font-family:IBM Plex Mono,monospace;font-size:0.83rem;padding:7px 10px;">{result.get(key) or "—"}</td></tr>'
+            f'<tr><td style="color:#6b7280;font-size:0.83rem;padding:7px 10px;">{label}</td><td style="font-family:IBM Plex Mono,monospace;font-size:0.83rem;padding:7px 10px;">{html_lib.escape(str(result.get(key) or "—"))}</td></tr>'
             for label, key in fields
         ])
         st.markdown(f'<table class="dim-table"><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
@@ -483,16 +486,16 @@ elif page == "📋 History":
         for a in filtered:
             crit = a.get("flag_critical_count", 0)
             warn = a.get("flag_warning_count", 0)
-            dt   = a.get("created_at", "")[:10]
+            dt   = html_lib.escape(str(a.get("created_at", "")[:10]))
 
             col1, col2, col3 = st.columns([3, 2, 1])
             with col1:
                 st.markdown(f"""
                 <div class="history-row">
                     <div>
-                        <div style="font-weight:600;color:#0f172a;font-size:0.92rem;">{a.get('filename','')}</div>
+                        <div style="font-weight:600;color:#0f172a;font-size:0.92rem;">{html_lib.escape(str(a.get('filename','')))}</div>
                         <div style="font-size:0.78rem;color:#6b7280;margin-top:2px;">
-                            {a.get('drawing_type','—')} · {a.get('part_name','—')} · {a.get('material','—')}
+                            {html_lib.escape(str(a.get('drawing_type','—')))} · {html_lib.escape(str(a.get('part_name','—')))} · {html_lib.escape(str(a.get('material','—')))}
                         </div>
                     </div>
                     <div style="text-align:right;font-size:0.78rem;">
@@ -515,7 +518,7 @@ elif page == "📋 History":
             record = get_analysis_by_id(aid)
             if record:
                 st.markdown("---")
-                st.markdown(f"### {record['filename']}")
+                st.markdown(f"### {html_lib.escape(str(record['filename']))}")
                 render_result(record["result_json"], record["filename"], aid)
 
 
@@ -565,12 +568,12 @@ elif page == "👥 Team":
                     with col_a:
                         st.markdown(f"""
                         <div class="team-member-row">
-                            <div class="avatar">{initials}</div>
+                            <div class="avatar">{html_lib.escape(initials)}</div>
                             <div style="flex:1">
-                                <div style="font-weight:500;color:#0f172a;font-size:0.9rem;">{name}</div>
-                                <div style="font-size:0.78rem;color:#6b7280;">{email}</div>
+                                <div style="font-weight:500;color:#0f172a;font-size:0.9rem;">{html_lib.escape(name)}</div>
+                                <div style="font-size:0.78rem;color:#6b7280;">{html_lib.escape(email)}</div>
                             </div>
-                            <span class="role-badge role-{role}">{role}</span>
+                            <span class="role-badge role-{html_lib.escape(role)}">{html_lib.escape(role)}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with col_b:
