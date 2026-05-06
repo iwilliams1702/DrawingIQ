@@ -85,7 +85,7 @@ def signup(email: str, password: str, full_name: str, company: str = "") -> tupl
         import time; time.sleep(1)
         from database import get_client
         try:
-            get_client().table("profiles").insert({
+            get_client().table("profiles").upsert({
                 "id": user.id,
                 "email": email,
                 "full_name": full_name,
