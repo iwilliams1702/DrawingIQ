@@ -214,9 +214,9 @@ def render_auth_page():
     st.markdown(AUTH_CSS, unsafe_allow_html=True)
     view = st.session_state.get("auth_view", "login")
     st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-    st.image("https://raw.githubusercontent.com/iwilliams1702/DrawingIQ/main/ChatGPT%20Image%20May%206%2C%202026%2C%2010_41_58%20AM.png", width=150)
     st.markdown("""
     <div class="auth-logo">
+        <div class="auth-logo-icon">⚙</div>
         <h1>Drawing<span>IQ</span></h1>
         <div class="tagline">Blueprints <span>·</span> Precision <span>·</span> Production</div>
     </div>
