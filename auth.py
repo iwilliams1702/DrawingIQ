@@ -10,11 +10,13 @@ from database import get_profile, update_profile
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzcmZhbXV5dW5hdHZqeG9jZmVpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODA4MDMzOCwiZXhwIjoyMDkzNjU2MzM4fQ.b1td-aqu0FgAXkvo_Ohx68rX9nn6pkgiKhi-pSwB0bs"
 
+def get_service_client() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 def get_auth_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
-
 
 def init_session():
     defaults = {
