@@ -120,8 +120,8 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 
 def get_profile(user_id: str) -> dict | None:
     db = get_client()
-    res = db.table("profiles").select("*").eq("id", user_id).single().execute()
-    return res.data
+    res = db.table("profiles").select("*").eq("id", user_id).execute()
+    return res.data[0] if res.data else None
 
 def update_profile(user_id: str, updates: dict) -> dict:
     db = get_client()
