@@ -503,7 +503,9 @@ elif page == "📋 History":
                      {("⚠ " + str(crit) + " critical") if crit else ""}
                      {("⚠ " + str(warn) + " warning") if warn else ""}   
                     </div>
-                """, unsafe_allow_html=True)
+                    </div>
+                        """, unsafe_allow_html=True)
+                    
             with col2:
                 if st.button(f"View", key=f"view_{a['id']}", use_container_width=True):
                     st.session_state["viewing_analysis"] = a["id"]
