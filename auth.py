@@ -17,13 +17,12 @@ def get_auth_client() -> Client:
 
 
 def init_session():
-    """Initialize session state keys for auth."""
     defaults = {
         "user": None,
         "profile": None,
         "access_token": None,
         "refresh_token": None,
-        "auth_view": "login",       # login | signup | reset
+        "auth_view": "login",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -43,7 +42,6 @@ def get_current_profile() -> dict | None:
 
 
 def refresh_profile():
-    """Re-fetch profile from DB into session."""
     user = get_current_user()
     if user:
         st.session_state.profile = get_profile(user["id"])
@@ -83,15 +81,20 @@ def signup(email: str, password: str, full_name: str, company: str = "") -> tupl
         if not user:
             return False, "Signup failed. Please try again."
 
-        # Update company if provided (profile auto-created by DB trigger)
-        if company:
-            import time; time.sleep(0.5)   # let the trigger run
-            try:
-                update_profile(user.id, {"company": company, "full_name": full_name})
-            except Exception:
-                pass
+        # Manually create profile (bypasses trigger)
+        import time; time.sleep(1)
+        from database import get_client
+        try:
+            get_client().table("profiles").insert({
+                "id": user.id,
+                "email": email,
+                "full_name": full_name,
+                "company": company,
+            }).execute()
+        except Exception:
+            pass  # Profile may already exist
 
-        return True, "Account created! Check your email to confirm, then log in."
+        return True, "Account created! You can now log in."
     except Exception as e:
         msg = str(e)
         if "already registered" in msg.lower() or "already exists" in msg.lower():
@@ -176,7 +179,6 @@ AUTH_CSS = """
 
 
 def render_auth_page():
-    """Full-page auth UI. Call when user is not logged in."""
     st.markdown(AUTH_CSS, unsafe_allow_html=True)
 
     view = st.session_state.get("auth_view", "login")
