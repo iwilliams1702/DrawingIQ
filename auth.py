@@ -1,3 +1,11 @@
+# Copyright (c) 2026 Isaiah Williams / DrawingIQ
+# All rights reserved. Unauthorized copying, modification,
+# or distribution of this software is strictly prohibited.
+
+
+
+
+
 """
 auth.py — Authentication using Supabase Auth
 Handles: signup, login, logout, password reset, session persistence in Streamlit

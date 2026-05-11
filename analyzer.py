@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Isaiah Williams / DrawingIQ
+# All rights reserved. Unauthorized copying, modification,
+# or distribution of this software is strictly prohibited.
+
+
+
+
 """
 analyzer.py — Core AI analysis engine for DrawingIQ
 Zero-hallucination prompting, strict grounding, quote estimation, and extended feature set.

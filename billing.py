@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Isaiah Williams / DrawingIQ
+# All rights reserved. Unauthorized copying, modification,
+# or distribution of this software is strictly prohibited.
+
+
+
+
 """
 billing.py — Stripe integration for DrawingIQ
 Handles: checkout sessions, customer portal, webhook processing, plan upgrades

@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Isaiah Williams / DrawingIQ
+# All rights reserved. Unauthorized copying, modification,
+# or distribution of this software is strictly prohibited.
+
+
+
 """
 pdf_utils.py — PDF handling for DrawingIQ
 Converts PDF pages to high-res images for GPT-4o vision analysis.
