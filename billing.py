@@ -344,126 +344,107 @@ BILLING_CSS = """
 
 
 def render_pricing_page(user_id: str, email: str, current_plan: str):
-    st.markdown(BILLING_CSS, unsafe_allow_html=True)
-    st.markdown("## Upgrade DrawingIQ")
-    st.caption("Upgrade or downgrade anytime. Cancel at any time.")
-
-    # Stripe not configured warning
     stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
-    if not stripe_key or stripe_key == "":
-        st.warning(
-            "💳 **Stripe not connected yet.** "
-            "To accept payments, add your Stripe keys to Streamlit secrets. "
-            "See setup instructions below."
-        )
-        with st.expander("📋 How to connect Stripe"):
-            st.markdown("""
-            **Step 1:** Go to [stripe.com](https://stripe.com) and create an account
+    plan_order = ["free", "starter", "pro", "enterprise"]
 
-            **Step 2:** In Stripe Dashboard → Products → Create two products:
-            - **DrawingIQ Starter** — $29/month recurring
-            - **DrawingIQ Pro** — $99/month recurring
+    st.markdown("## Upgrade DrawingIQ")
+    st.caption("Upgrade or downgrade anytime. Cancel anytime. No contracts.")
 
-            **Step 3:** Copy the Price IDs (start with `price_...`)
-
-            **Step 4:** Add to your Streamlit secrets:
-            ```
-            STRIPE_SECRET_KEY = "sk_live_..."
-            STRIPE_PRICE_STARTER = "price_..."
-            STRIPE_PRICE_PRO = "price_..."
-            STRIPE_WEBHOOK_SECRET = "whsec_..."
-            ```
-
-            **Step 5:** Set up webhook in Stripe Dashboard → Developers → Webhooks:
-            - Endpoint: `https://yourapp.streamlit.app/webhook`
-            - Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
-            """)
-
-    # Pricing cards
-    st.markdown('<div class="pricing-wrap">', unsafe_allow_html=True)
-    
     plan_list = [
-        {"key": "free",       **FREE_PLAN},
+        {"key": "free",       **FREE_PLAN,                              "color": "#6b7280"},
         {"key": "starter",    **{k:v for k,v in PLANS["starter"].items()}},
         {"key": "pro",        **{k:v for k,v in PLANS["pro"].items()}},
         {"key": "enterprise", **{k:v for k,v in PLANS["enterprise"].items()}},
     ]
 
     cols = st.columns(4)
-    plan_order = ["free", "starter", "pro", "enterprise"]
-
-    for i, (col, plan) in enumerate(zip(cols, plan_list)):
+    for col, plan in zip(cols, plan_list):
         with col:
             is_current  = plan["key"] == current_plan
             highlighted = plan.get("highlighted", False)
-            name_color  = plan.get("color", "#374151")
+            color       = plan.get("color", "#6b7280")
 
-            popular_html = ""
-            if highlighted:
-                popular_html = '<div class="most-popular-badge"><span>Most Popular</span></div>'
+            # Card border
+            border = "3px solid #f97316" if highlighted else "1px solid #e2e8f0"
+            bg     = "white"
 
-            features_html = "".join(
-                f'<li>{f}</li>' for f in plan["features"]
-            )
+            with st.container():
+                # Most popular badge
+                if highlighted:
+                    st.markdown(
+                        "<div style='text-align:center;margin-bottom:8px;'>"
+                        "<span style='background:#f97316;color:white;font-size:0.68rem;"
+                        "font-weight:700;padding:3px 14px;border-radius:20px;"
+                        "letter-spacing:0.06em;text-transform:uppercase;'>MOST POPULAR</span>"
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
 
-            card_class = "pricing-card highlighted" if highlighted else "pricing-card"
+                # Plan name
+                st.markdown(
+                    f"<p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;"
+                    f"letter-spacing:0.08em;color:{color};margin:0 0 4px;'>{plan['name']}</p>",
+                    unsafe_allow_html=True,
+                )
 
-            st.markdown(f"""
-            <div class="{card_class}">
-                {popular_html}
-                <div class="pc-plan-name" style="color:{name_color};">{plan['name']}</div>
-                <div>
-                    <span class="pc-price">{plan['price']}</span>
-                    <span class="pc-period">{plan.get('period','')}</span>
-                </div>
-                <ul class="pc-features">{features_html}</ul>
-            </div>
-            """, unsafe_allow_html=True)
+                # Price
+                st.markdown(
+                    f"<p style='font-size:2rem;font-weight:800;color:#0f172a;"
+                    f"font-family:monospace;margin:0;line-height:1;'>"
+                    f"{plan['price']}"
+                    f"<span style='font-size:0.85rem;color:#6b7280;font-weight:400;"
+                    f"font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>"
+                    f"</p>",
+                    unsafe_allow_html=True,
+                )
 
-            if is_current:
-                st.success("✓ Current plan", icon=None)
-            elif plan["key"] == "free":
-                if current_plan != "free":
-                    st.button("Downgrade to Free", key=f"btn_free",
-                              help="Cancel via Manage Subscription below.",
-                              use_container_width=True)
-            elif plan["key"] == "enterprise":
-                if st.button("Contact Sales", key="btn_enterprise",
-                             use_container_width=True):
-                    st.info("Email us at sales@drawingiq.com")
-            else:
-                label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
-                if st.button(label, key=f"btn_{plan['key']}",
-                             type="primary", use_container_width=True):
-                    if not stripe_key:
-                        st.error("Stripe not connected yet. See setup instructions above.")
-                    else:
-                        try:
-                            url = create_checkout_session(user_id, plan["key"], email)
-                            st.markdown(
-                                f'<meta http-equiv="refresh" content="0; url={url}">',
-                                unsafe_allow_html=True,
-                            )
-                            st.info(f"Redirecting to Stripe… [Click here if not redirected]({url})")
-                        except ValueError as e:
-                            st.error(str(e))
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+                # Features
+                for f in plan["features"]:
+                    st.markdown(
+                        f"<p style='font-size:0.82rem;color:#374151;margin:3px 0;"
+                        f"display:flex;gap:6px;'>"
+                        f"<span style='color:#16a34a;font-weight:700;'>✓</span> {f}</p>",
+                        unsafe_allow_html=True,
+                    )
 
-    # Manage subscription
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+                # Button
+                if is_current:
+                    st.success("✓ Current plan")
+                elif plan["key"] == "free":
+                    if current_plan != "free":
+                        if st.button("Downgrade", key="btn_free", use_container_width=True):
+                            st.info("To cancel, use Manage Subscription below.")
+                elif plan["key"] == "enterprise":
+                    if st.button("Contact Sales", key="btn_enterprise", use_container_width=True):
+                        st.info("Email sales@drawingiq.com")
+                else:
+                    label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
+                    if st.button(label, key=f"btn_{plan['key']}",
+                                 type="primary", use_container_width=True):
+                        if not stripe_key or "REPLACE_ME" in os.getenv(f"STRIPE_PRICE_{plan['key'].upper()}", "REPLACE_ME"):
+                            st.error("Payment processing is being set up. Check back soon or contact support@drawingiq.com")
+                        else:
+                            try:
+                                url = create_checkout_session(user_id, plan["key"], email)
+                                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                                st.info(f"Redirecting… [Click here if not redirected]({url})")
+                            except ValueError as e:
+                                st.error(str(e))
+
     if current_plan != "free":
         st.markdown("---")
-        if st.button("⚙ Manage Subscription / Cancel"):
+        if st.button("⚙ Manage Subscription / Cancel", use_container_width=False):
             if not stripe_key:
-                st.error("Stripe not connected yet.")
+                st.error("Contact support@drawingiq.com to manage your subscription.")
             else:
                 try:
                     url = create_portal_session(user_id)
-                    st.markdown(
-                        f'<meta http-equiv="refresh" content="0; url={url}">',
-                        unsafe_allow_html=True,
-                    )
-                    st.info(f"Redirecting to Stripe Portal… [Click here]({url})")
+                    st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                    st.info(f"Redirecting to billing portal… [Click here]({url})")
                 except ValueError as e:
                     st.error(str(e))
 
