@@ -8,82 +8,111 @@ from supabase import create_client, Client
 import os
 from database import get_profile, update_profile
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_URL      = os.getenv("SUPABASE_URL")
+SUPABASE_KEY      = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
 
 def get_service_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+
 def get_auth_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
 def init_session():
     defaults = {
-        "user": None,
-        "profile": None,
-        "access_token": None,
+        "user":          None,
+        "profile":       None,
+        "access_token":  None,
         "refresh_token": None,
-        "auth_view": "login",
+        "auth_view":     "login",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
+
 def is_logged_in() -> bool:
     return st.session_state.get("user") is not None
+
 
 def get_current_user() -> dict | None:
     return st.session_state.get("user")
 
+
 def get_current_profile() -> dict | None:
     return st.session_state.get("profile")
+
 
 def refresh_profile():
     user = get_current_user()
     if user:
-        st.session_state.profile = get_profile(user["id"])
+        profile = get_profile(user["id"])
+        st.session_state.profile = profile
+        # Also keep full_name synced on the user dict so header always works
+        if profile and profile.get("full_name"):
+            st.session_state.user["full_name"] = profile["full_name"]
+
 
 def login(email: str, password: str) -> tuple[bool, str]:
     try:
         client = get_auth_client()
-        res = client.auth.sign_in_with_password({"email": email, "password": password})
-        user = res.user
+        res    = client.auth.sign_in_with_password({"email": email, "password": password})
+        user    = res.user
         session = res.session
         if not user:
             return False, "Invalid email or password."
-        st.session_state.user = {"id": user.id, "email": user.email}
-        st.session_state.access_token = session.access_token
+
+        # Fetch profile immediately so full_name is available right away
+        profile = get_profile(user.id) or {}
+        full_name = (
+            profile.get("full_name")
+            or user.user_metadata.get("full_name", "")
+            or email.split("@")[0]   # last-resort fallback: use email prefix
+        )
+
+        st.session_state.user = {
+            "id":        user.id,
+            "email":     user.email,
+            "full_name": full_name,
+        }
+        st.session_state.access_token  = session.access_token
         st.session_state.refresh_token = session.refresh_token
-        st.session_state.profile = get_profile(user.id)
-        return True, "Welcome back!"
+        st.session_state.profile       = profile
+
+        return True, f"Welcome back, {full_name}!"
     except Exception as e:
         msg = str(e)
         if "Invalid login" in msg or "invalid_credentials" in msg:
             return False, "Incorrect email or password."
         return False, f"Login error: {msg}"
 
+
 def signup(email: str, password: str, full_name: str, company: str = "") -> tuple[bool, str]:
     if len(password) < 8:
         return False, "Password must be at least 8 characters."
     try:
         client = get_auth_client()
-        res = client.auth.sign_up({
-            "email": email,
+        res    = client.auth.sign_up({
+            "email":    email,
             "password": password,
-            "options": {"data": {"full_name": full_name}}
+            "options":  {"data": {"full_name": full_name}},
         })
         user = res.user
         if not user:
             return False, "Signup failed. Please try again."
 
-        import time; time.sleep(1)
+        import time
+        time.sleep(1)
+
         try:
             get_service_client().table("profiles").upsert({
-                "id": user.id,
-                "email": email,
+                "id":        user.id,
+                "email":     email,
                 "full_name": full_name,
-                "company": company,
+                "company":   company,
             }).execute()
         except Exception:
             pass
@@ -95,6 +124,7 @@ def signup(email: str, password: str, full_name: str, company: str = "") -> tupl
             return False, "An account with this email already exists."
         return False, f"Signup error: {msg}"
 
+
 def logout():
     try:
         client = get_auth_client()
@@ -105,6 +135,7 @@ def logout():
         st.session_state[key] = None
     st.rerun()
 
+
 def send_password_reset(email: str) -> tuple[bool, str]:
     try:
         client = get_auth_client()
@@ -114,13 +145,14 @@ def send_password_reset(email: str) -> tuple[bool, str]:
         return False, f"Error: {str(e)}"
 
 
+# ── Auth page CSS ──────────────────────────────────────────────────────────────
 AUTH_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
 [data-testid="stAppViewContainer"] {
     background: #020d1f;
-    background-image: 
+    background-image:
         linear-gradient(rgba(0,80,200,0.07) 1px, transparent 1px),
         linear-gradient(90deg, rgba(0,80,200,0.07) 1px, transparent 1px);
     background-size: 40px 40px;
@@ -128,38 +160,28 @@ AUTH_CSS = """
 [data-testid="stHeader"] { background: transparent; }
 
 .auth-container {
-    width: 100%;
-    max-width: 440px;
-    margin: 2rem auto;
+    width: 100%; max-width: 440px; margin: 2rem auto;
     background: rgba(5, 20, 50, 0.85);
     border: 1px solid rgba(30, 100, 255, 0.3);
-    border-radius: 16px;
-    padding: 2.5rem;
+    border-radius: 16px; padding: 2.5rem;
     box-shadow: 0 0 60px rgba(0,80,255,0.15), 0 20px 60px rgba(0,0,0,0.5);
     backdrop-filter: blur(20px);
 }
 
 .auth-logo { text-align: center; margin-bottom: 2rem; }
-
 .auth-logo-icon {
-    width: 72px; height: 72px;
-    margin: 0 auto 1rem;
+    width: 72px; height: 72px; margin: 0 auto 1rem;
     background: linear-gradient(135deg, #0a1628, #0d2a5e);
-    border: 2px solid rgba(30,100,255,0.5);
-    border-radius: 16px;
+    border: 2px solid rgba(30,100,255,0.5); border-radius: 16px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 2rem;
-    box-shadow: 0 0 20px rgba(30,100,255,0.3);
+    font-size: 2rem; box-shadow: 0 0 20px rgba(30,100,255,0.3);
 }
-
 .auth-logo h1 {
     font-family: 'Inter', sans-serif;
     font-size: 1.8rem; font-weight: 700;
-    color: #ffffff; margin: 0 0 0.25rem;
-    letter-spacing: -0.02em;
+    color: #ffffff; margin: 0 0 0.25rem; letter-spacing: -0.02em;
 }
 .auth-logo h1 span { color: #3b82f6; }
-
 .auth-logo .tagline {
     font-size: 0.75rem; color: #4a6fa5;
     letter-spacing: 0.15em; text-transform: uppercase; font-weight: 500;
@@ -183,15 +205,16 @@ AUTH_CSS = """
 [data-testid="stTextInput"] input {
     background: rgba(10,30,70,0.6) !important;
     border: 1px solid rgba(30,100,255,0.25) !important;
-    border-radius: 8px !important;
-    color: #e2e8f0 !important;
+    border-radius: 8px !important; color: #e2e8f0 !important;
 }
 [data-testid="stTextInput"] input:focus {
     border-color: rgba(59,130,246,0.7) !important;
     box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important;
 }
-[data-testid="stTextInput"] label { color: #7aa2d4 !important; font-size: 0.82rem !important; font-weight: 500 !important; }
-
+[data-testid="stTextInput"] label {
+    color: #7aa2d4 !important; font-size: 0.82rem !important;
+    font-weight: 500 !important;
+}
 [data-testid="stButton"] button[kind="primary"] {
     background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
     border: none !important; border-radius: 8px !important;
@@ -203,12 +226,12 @@ AUTH_CSS = """
     border: 1px solid rgba(30,100,255,0.2) !important;
     color: #7aa2d4 !important; border-radius: 8px !important;
 }
-
 h4 { color: #e2e8f0 !important; font-family: 'Inter', sans-serif !important; }
 [data-testid="stMarkdownContainer"] p { color: #7aa2d4 !important; }
 [data-testid="stCaptionContainer"] { color: #4a6fa5 !important; }
 </style>
 """
+
 
 def render_auth_page():
     st.markdown(AUTH_CSS, unsafe_allow_html=True)
@@ -229,10 +252,12 @@ def render_auth_page():
         _render_reset()
     st.markdown('</div>', unsafe_allow_html=True)
 
+
 def _render_login():
     st.markdown("#### Sign in to your account")
-    email    = st.text_input("Email", key="login_email", placeholder="you@company.com")
-    password = st.text_input("Password", type="password", key="login_pw", placeholder="••••••••")
+    email    = st.text_input("Email",    key="login_email", placeholder="you@company.com")
+    password = st.text_input("Password", key="login_pw",    placeholder="••••••••",
+                             type="password")
     col1, col2 = st.columns([3, 2])
     with col1:
         if st.button("Sign In", type="primary", use_container_width=True):
@@ -250,19 +275,23 @@ def _render_login():
         if st.button("Forgot password?", use_container_width=True):
             st.session_state.auth_view = "reset"
             st.rerun()
-    st.markdown('<div class="auth-divider"><span>New to DrawingIQ?</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="auth-divider"><span>New to DrawingIQ?</span></div>',
+                unsafe_allow_html=True)
     if st.button("Create a free account →", use_container_width=True):
         st.session_state.auth_view = "signup"
         st.rerun()
 
+
 def _render_signup():
     st.markdown("#### Create your free account")
     st.caption("Free plan includes 5 analyses/month. No credit card required.")
-    full_name = st.text_input("Full Name", key="su_name", placeholder="Jane Smith")
-    company   = st.text_input("Company (optional)", key="su_company", placeholder="Acme Manufacturing")
-    email     = st.text_input("Work Email", key="su_email", placeholder="jane@acme.com")
-    password  = st.text_input("Password", type="password", key="su_pw", placeholder="Min. 8 characters")
-    confirm   = st.text_input("Confirm Password", type="password", key="su_confirm")
+    full_name = st.text_input("Full Name",           key="su_name",    placeholder="Jane Smith")
+    company   = st.text_input("Company (optional)",  key="su_company", placeholder="Acme Manufacturing")
+    email     = st.text_input("Work Email",          key="su_email",   placeholder="jane@acme.com")
+    password  = st.text_input("Password",            key="su_pw",      placeholder="Min. 8 characters",
+                              type="password")
+    confirm   = st.text_input("Confirm Password",    key="su_confirm", type="password")
+
     if st.button("Create Account", type="primary", use_container_width=True):
         if not all([full_name, email, password, confirm]):
             st.error("Please fill in all required fields.")
@@ -275,10 +304,13 @@ def _render_signup():
                 st.success(msg)
             else:
                 st.error(msg)
-    st.markdown('<div class="auth-divider"><span>Already have an account?</span></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="auth-divider"><span>Already have an account?</span></div>',
+                unsafe_allow_html=True)
     if st.button("← Back to Sign In", use_container_width=True):
         st.session_state.auth_view = "login"
         st.rerun()
+
 
 def _render_reset():
     st.markdown("#### Reset your password")

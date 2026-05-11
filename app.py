@@ -221,7 +221,12 @@ if not profile:
 plan        = profile.get("plan", "free")
 limits      = get_plan_limits(plan)
 plan_badge  = f'<span class="plan-badge badge-{plan}">{html_lib.escape(plan.upper())}</span>'
-user_name   = profile.get("full_name") or profile.get("email", "User")
+user_name = (
+    user.get("full_name")               # set at login time
+    or profile.get("full_name")         # from DB profile
+    or profile.get("email", "")         # fallback to email
+    or user.get("email", "")
+).strip() or "User"
 user_initials = "".join([p[0].upper() for p in user_name.split()[:2]])
 safe_name     = html_lib.escape(user_name)
 safe_initials = html_lib.escape(user_initials)
