@@ -935,36 +935,48 @@ elif page == "📋 History":
                         st.rerun()
                 continue
 
-            col1, col2, col3 = st.columns([5, 1, 1])
-            with col1:
+            flag_badges = ""
+            if crit:
+                flag_badges += (
+                    f'<span style="background:#fee2e2;color:#991b1b;font-size:0.72rem;'
+                    f'font-weight:600;padding:2px 8px;border-radius:4px;margin-left:6px;">'
+                    f'🔴 {crit} critical</span>'
+                )
+            if warn:
+                flag_badges += (
+                    f'<span style="background:#fef3c7;color:#92400e;font-size:0.72rem;'
+                    f'font-weight:600;padding:2px 8px;border-radius:4px;margin-left:6px;">'
+                    f'⚠ {warn} warning</span>'
+                )
+
+            card_col, btn_col = st.columns([6, 1])
+            with card_col:
                 st.markdown(f"""
-                <div class="history-row">
-                  <div>
-                    <div style="font-weight:600;color:#0f172a;font-size:0.92rem;">
-                        {html_lib.escape(str(a.get('filename','')))}
+                <div style="background:white;border:1px solid #dbeafe;border-radius:10px;
+                            padding:0.85rem 1.1rem;box-shadow:0 1px 4px rgba(30,100,255,0.06);">
+                    <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+                        <span style="font-weight:600;color:#0f172a;font-size:0.92rem;">
+                            {html_lib.escape(str(a.get('filename','')))}
+                        </span>
+                        {flag_badges}
+                        <span style="margin-left:auto;font-size:0.75rem;color:#9ca3af;">📅 {dt}</span>
                     </div>
-                    <div style="font-size:0.78rem;color:#6b7280;margin-top:2px;">
-                        {html_lib.escape(str(a.get('drawing_type','—')))} ·
-                        {html_lib.escape(str(a.get('part_name','—')))} ·
-                        {html_lib.escape(str(a.get('material','—')))}
+                    <div style="font-size:0.78rem;color:#6b7280;margin-top:5px;display:flex;gap:1rem;flex-wrap:wrap;">
+                        <span>📐 {html_lib.escape(str(a.get('drawing_type','—')))}</span>
+                        <span>🔩 {html_lib.escape(str(a.get('part_name','—')))}</span>
+                        <span>🧱 {html_lib.escape(str(a.get('material','—')))}</span>
                     </div>
-                  </div>
-                  <div style="text-align:right;font-size:0.78rem;">
-                    <div style="color:#6b7280;">{dt}</div>
-                    {("⚠ " + str(crit) + " critical<br>" if crit else "")}
-                    {("⚠ " + str(warn) + " warning" if warn else "")}
-                  </div>
                 </div>
                 """, unsafe_allow_html=True)
-            with col2:
-                if st.button("View", key=f"view_{aid}", use_container_width=True):
+            with btn_col:
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                if st.button("👁 View", key=f"view_{aid}", use_container_width=True):
                     st.session_state["viewing_analysis"] = aid
                     st.rerun()
-            with col3:
-                if st.button("🗑 Del", key=f"del_{aid}",
-                             use_container_width=True):
+                if st.button("🗑 Del", key=f"del_{aid}", use_container_width=True):
                     st.session_state["pending_delete"] = aid
                     st.rerun()
+            st.markdown("<div style='margin-bottom:0.25rem'></div>", unsafe_allow_html=True)
 
         # ── Expanded view anchored at bottom ───────────────────────────────────
         if "viewing_analysis" in st.session_state:
