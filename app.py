@@ -321,48 +321,53 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
     dims     = result.get("dimensions", [])
     conf     = result.get("confidence_score", 0)
 
-    dtype = html_lib.escape(str(result.get("drawing_type", "Unknown")))
+    dtype   = html_lib.escape(str(result.get("drawing_type", "Unknown")))
+    clarity = result.get("drawing_clarity", "Unknown")
+    clarity_color = {
+        "Clear": "#16a34a", "Partially Legible": "#d97706",
+        "Difficult to Read": "#dc2626", "Unclear": "#dc2626",
+    }.get(clarity, "#6b7280")
+
     st.markdown(f'<span class="drawing-type-tag">{dtype}</span>',
                 unsafe_allow_html=True)
 
+    if conf < 60:
+        st.warning(
+            f"⚠️ **Low confidence ({conf}%)** — The drawing may be blurry or low-resolution. "
+            f"Results may be incomplete. Upload a cleaner scan for best accuracy."
+        )
+
+    pn  = html_lib.escape(str(result.get("part_name")  or "Unknown"))
+    pno = html_lib.escape(str(result.get("part_number") or "Unknown"))
+    rev = html_lib.escape(str(result.get("revision")    or "Unknown"))
+    mat = html_lib.escape(str(result.get("material")    or "Unknown"))
+    unt = html_lib.escape(str(result.get("units")       or "Unknown"))
+    cmp = html_lib.escape(str(result.get("estimated_complexity") or "Unknown"))
+    tsr = html_lib.escape(str(result.get("tolerance_stack_risk") or "Unknown"))
+    crit_color = '#dc2626' if critical else '#16a34a'
+
     st.markdown(f"""
     <div class="metric-strip">
-        <div class="metric-box">
-            <div class="label">Part</div>
-            <div class="value small">{html_lib.escape(str(result.get("part_name","—")))}</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">P/N</div>
-            <div class="value small">{html_lib.escape(str(result.get("part_number") or "—"))}</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">Rev</div>
-            <div class="value small">{html_lib.escape(str(result.get("revision") or "—"))}</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">Material</div>
-            <div class="value small">{html_lib.escape(str(result.get("material","—")))}</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">Complexity</div>
-            <div class="value small">{html_lib.escape(str(result.get("estimated_complexity","—")))}</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">Confidence</div>
-            <div class="value">{conf}%</div>
-        </div>
-        <div class="metric-box">
-            <div class="label">Flags</div>
-            <div class="value small" style="color:{'#dc2626' if critical else '#16a34a'}">
-                {len(critical)}c · {len(warnings)}w
-            </div>
-        </div>
+        <div class="metric-box"><div class="label">Part</div><div class="value small">{pn}</div></div>
+        <div class="metric-box"><div class="label">P/N</div><div class="value small">{pno}</div></div>
+        <div class="metric-box"><div class="label">Rev</div><div class="value small">{rev}</div></div>
+        <div class="metric-box"><div class="label">Material</div><div class="value small">{mat}</div></div>
+        <div class="metric-box"><div class="label">Units</div><div class="value small">{unt}</div></div>
+        <div class="metric-box"><div class="label">Complexity</div><div class="value small">{cmp}</div></div>
+        <div class="metric-box"><div class="label">Confidence</div><div class="value">{conf}%</div></div>
+        <div class="metric-box"><div class="label">Clarity</div>
+            <div class="value small" style="color:{clarity_color}">{html_lib.escape(clarity)}</div></div>
+        <div class="metric-box"><div class="label">Flags</div>
+            <div class="value small" style="color:{crit_color}">{len(critical)}c · {len(warnings)}w</div></div>
+        <div class="metric-box"><div class="label">Tol. Stack Risk</div>
+            <div class="value small">{tsr}</div></div>
     </div>
     """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        ["🚩 Flags", "📐 Dimensions", "🔧 Machinist Notes", "📋 Specs", "🖨 Print", "⬇ Export"]
-    )
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "🚩 Flags", "📐 Dimensions", "🔧 Machinist Notes",
+        "📋 Specs", "💰 Quote", "📝 Raw Notes", "🖨 Print", "⬇ Export"
+    ])
 
     with tab1:
         if not flags:
@@ -487,8 +492,180 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
         with st.expander("Raw JSON"):
             st.json(result)
 
-    # ── Print tab ──────────────────────────────────────────────────────────────
+    # ── Quote tab ─────────────────────────────────────────────────────────────
     with tab5:
+        from analyzer import estimate_quote
+        st.markdown("### 💰 Job Cost Estimator")
+        st.caption(
+            "Enter your shop rates below. The estimate is based on detected complexity "
+            "and visible drawing features. Always review before sending to a customer."
+        )
+
+        if result.get("estimated_complexity", "Unknown") == "Unknown":
+            st.warning("Complexity could not be determined from this drawing. "
+                       "Enter hours manually or re-analyze with Deep Review.")
+
+        st.markdown("---")
+        st.markdown("**Shop Rates**")
+        qc1, qc2, qc3 = st.columns(3)
+        with qc1:
+            machine_rate = st.number_input("Machine Rate ($/hr)", min_value=0.0, value=85.0, step=5.0, key=f"q_mr_{analysis_id}")
+            labor_rate   = st.number_input("Labor Rate ($/hr)",   min_value=0.0, value=65.0, step=5.0, key=f"q_lr_{analysis_id}")
+        with qc2:
+            mat_cost_kg  = st.number_input("Material Cost ($/kg)", min_value=0.0, value=5.0, step=0.5, key=f"q_mc_{analysis_id}")
+            mat_density  = st.number_input("Material Density (kg/m³)", min_value=100.0, value=2700.0, step=100.0,
+                                           key=f"q_md_{analysis_id}",
+                                           help="Al=2700, Steel=7850, SS=8000, Ti=4500, Brass=8500, Copper=8960")
+        with qc3:
+            overhead_pct = st.number_input("Overhead (%)",      min_value=0.0, value=15.0, step=1.0, key=f"q_oh_{analysis_id}")
+            profit_pct   = st.number_input("Profit Margin (%)", min_value=0.0, value=20.0, step=1.0, key=f"q_pm_{analysis_id}")
+
+        qc4, qc5 = st.columns(2)
+        with qc4:
+            setup_cost = st.number_input("Fixed Setup Cost ($)", min_value=0.0, value=50.0, step=10.0, key=f"q_sc_{analysis_id}")
+        with qc5:
+            quantity   = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"q_qty_{analysis_id}")
+
+        st.markdown("**Customer Info (for quote export)**")
+        qd1, qd2 = st.columns(2)
+        with qd1:
+            customer_name = st.text_input("Customer Name", placeholder="Acme Corp", key=f"q_cn_{analysis_id}")
+            customer_email= st.text_input("Customer Email", placeholder="buyer@acme.com", key=f"q_ce_{analysis_id}")
+        with qd2:
+            quote_number  = st.text_input("Quote #", placeholder="Q-2026-001", key=f"q_qn_{analysis_id}")
+            due_date      = st.text_input("Delivery / Due Date", placeholder="2026-06-01", key=f"q_dd_{analysis_id}")
+
+        shop_notes = st.text_area("Internal Notes (not shown on quote)", placeholder="Needs 4th axis, check stock...", key=f"q_sn_{analysis_id}", height=80)
+
+        st.markdown("---")
+        if st.button("⚙ Calculate Estimate", type="primary", key=f"q_calc_{analysis_id}"):
+            shop_rates = {
+                "machine_rate_per_hr":    machine_rate,
+                "labor_rate_per_hr":      labor_rate,
+                "material_cost_per_kg":   mat_cost_kg,
+                "material_density_kg_m3": mat_density,
+                "overhead_pct":           overhead_pct,
+                "profit_margin_pct":      profit_pct,
+                "setup_cost":             setup_cost,
+                "quantity":               quantity,
+            }
+            q = estimate_quote(result, shop_rates)
+            st.session_state[f"quote_{analysis_id}"] = q
+            st.session_state[f"quote_meta_{analysis_id}"] = {
+                "customer_name":  customer_name,
+                "customer_email": customer_email,
+                "quote_number":   quote_number,
+                "due_date":       due_date,
+                "shop_notes":     shop_notes,
+            }
+
+        if f"quote_{analysis_id}" in st.session_state:
+            q    = st.session_state[f"quote_{analysis_id}"]
+            meta = st.session_state.get(f"quote_meta_{analysis_id}", {})
+
+            st.markdown("#### Estimate Results")
+            rc1, rc2, rc3, rc4 = st.columns(4)
+            rc1.metric("Price Per Part", f"${q['price_per_part']:,.2f}")
+            rc2.metric("Total Job Cost", f"${q['total_job_cost']:,.2f}")
+            rc3.metric("Quantity",       str(q['quantity']))
+            rc4.metric("Complexity",     q['complexity'])
+
+            st.markdown(f"""
+            <div class="result-card" style="font-size:0.88rem;">
+            <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:5px 10px;color:#6b7280;">Machine Cost</td><td style="font-family:monospace;padding:5px 10px;">${q['machine_cost']:,.2f}</td>
+                <td style="padding:5px 10px;color:#6b7280;">Machine Hrs/Part</td><td style="font-family:monospace;padding:5px 10px;">{q['machine_hours_per_part']} hr</td></tr>
+            <tr style="background:#f8faff;"><td style="padding:5px 10px;color:#6b7280;">Labor Cost</td><td style="font-family:monospace;padding:5px 10px;">${q['labor_cost']:,.2f}</td>
+                <td style="padding:5px 10px;color:#6b7280;">Labor Hrs/Part</td><td style="font-family:monospace;padding:5px 10px;">{q['labor_hours_per_part']} hr</td></tr>
+            <tr><td style="padding:5px 10px;color:#6b7280;">Material Cost</td><td style="font-family:monospace;padding:5px 10px;">${q['material_cost']:,.2f}</td>
+                <td style="padding:5px 10px;color:#6b7280;">Material Note</td><td style="font-family:monospace;padding:5px 10px;font-size:0.8rem;">{html_lib.escape(q['material_note'])}</td></tr>
+            <tr style="background:#f8faff;"><td style="padding:5px 10px;color:#6b7280;">Setup Cost</td><td style="font-family:monospace;padding:5px 10px;">${q['setup_cost']:,.2f}</td>
+                <td style="padding:5px 10px;color:#6b7280;">Setups</td><td style="font-family:monospace;padding:5px 10px;">{q['setup_count']}</td></tr>
+            <tr><td style="padding:5px 10px;color:#6b7280;">Overhead</td><td style="font-family:monospace;padding:5px 10px;">${q['overhead_amount']:,.2f}</td>
+                <td style="padding:5px 10px;color:#6b7280;">Profit</td><td style="font-family:monospace;padding:5px 10px;">${q['profit_amount']:,.2f}</td></tr>
+            <tr style="background:#eff6ff;font-weight:700;"><td style="padding:7px 10px;color:#1d4ed8;">TOTAL JOB</td><td style="font-family:monospace;padding:7px 10px;color:#1d4ed8;">${q['total_job_cost']:,.2f}</td>
+                <td style="padding:7px 10px;color:#1d4ed8;">PER PART</td><td style="font-family:monospace;padding:7px 10px;color:#1d4ed8;">${q['price_per_part']:,.2f}</td></tr>
+            </table>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.caption(f"⚠️ {q['disclaimer']}")
+
+            # Export quote as text
+            now_q = datetime.now().strftime("%Y-%m-%d")
+            quote_lines = [
+                "=" * 60,
+                "               DRAWINGIQ — SHOP QUOTE",
+                "=" * 60,
+                f"Quote #:       {meta.get('quote_number') or 'N/A'}",
+                f"Date:          {now_q}",
+                f"Delivery:      {meta.get('due_date') or 'TBD'}",
+                "-" * 60,
+                f"Customer:      {meta.get('customer_name') or 'N/A'}",
+                f"Email:         {meta.get('customer_email') or 'N/A'}",
+                "-" * 60,
+                f"Part:          {result.get('part_name') or 'Unknown'}",
+                f"Part Number:   {result.get('part_number') or 'Unknown'}",
+                f"Revision:      {result.get('revision') or 'Unknown'}",
+                f"Material:      {result.get('material') or 'Unknown'}",
+                f"Drawing File:  {filename}",
+                "-" * 60,
+                f"Quantity:      {q['quantity']} pcs",
+                f"Complexity:    {q['complexity']}",
+                f"Setups:        {q['setup_count']}",
+                "-" * 60,
+                f"Machine Cost:  ${q['machine_cost']:,.2f}",
+                f"Labor Cost:    ${q['labor_cost']:,.2f}",
+                f"Material Cost: ${q['material_cost']:,.2f}",
+                f"Setup Cost:    ${q['setup_cost']:,.2f}",
+                f"Overhead:      ${q['overhead_amount']:,.2f}",
+                f"Profit:        ${q['profit_amount']:,.2f}",
+                "=" * 60,
+                f"TOTAL JOB:     ${q['total_job_cost']:,.2f}",
+                f"PRICE/PART:    ${q['price_per_part']:,.2f}",
+                "=" * 60,
+                "",
+                "DISCLAIMER:",
+                q['disclaimer'],
+            ]
+            quote_text = "\n".join(quote_lines)
+            st.download_button(
+                "⬇ Download Quote (.txt)",
+                quote_text,
+                file_name=f"quote_{meta.get('quote_number') or filename.rsplit('.',1)[0]}.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+
+    # ── Raw Notes tab ──────────────────────────────────────────────────────────
+    with tab6:
+        st.markdown("### 📝 Raw Drawing Notes")
+        st.caption("Verbatim text extracted directly from the drawing. No interpretation.")
+        raw_notes = result.get("raw_notes", [])
+        if raw_notes:
+            for i, note in enumerate(raw_notes, 1):
+                st.markdown(
+                    f'<div class="flag-item flag-info">'
+                    f'<strong>Note {i}:</strong> {html_lib.escape(str(note))}</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("No general notes were extracted from this drawing.")
+
+        rev_hist = result.get("revision_history", [])
+        if rev_hist:
+            st.markdown("---\n**Revision History**")
+            for r in rev_hist:
+                st.markdown(f"• {html_lib.escape(str(r))}")
+
+        related = result.get("related_parts", [])
+        if related:
+            st.markdown("---\n**Referenced Part Numbers**")
+            for p in related:
+                st.markdown(f"• `{html_lib.escape(str(p))}`")
+
+    # ── Print tab ──────────────────────────────────────────────────────────────
+    with tab7:
         st.markdown("**Print-Ready Job Traveler Summary**")
         st.caption("Copy or print this block and attach it to your job traveler.")
 
@@ -553,7 +730,7 @@ def render_result(result: dict, filename: str, analysis_id: str = None):
         )
 
     # ── Export tab ─────────────────────────────────────────────────────────────
-    with tab6:
+    with tab8:
         if not limits.get("export"):
             st.markdown(
                 '<div class="upgrade-banner">Export requires Starter plan or higher.</div>',
