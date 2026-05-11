@@ -33,7 +33,7 @@ from database import (
     save_job_actual, get_job_actuals, find_similar_parts,
     save_fai, get_fai_reports,
 )
-from billing import render_pricing_page, render_usage_bar, PLANS
+from billing import render_pricing_page, render_usage_bar, PLANS, enforce_free_limits
 from analyzer import analyze_image, analyze_pdf_pages, estimate_quote
 from pdf_utils import pdf_to_images, image_file_to_b64, get_pdf_page_count
 
@@ -485,6 +485,10 @@ def check_machine_capability(dims, machines):
 
 if page == "📤 Analyze":
     allowed,reason = can_analyze(profile)
+    if allowed and profile.get("plan","free") == "free":
+        allowed2, reason2 = enforce_free_limits(profile, user.get("email",""))
+        if not allowed2:
+            allowed, reason = allowed2, reason2
     if not allowed:
         st.error(reason)
         st.markdown('<div class="upgrade-banner" style="max-width:500px;margin:1rem auto;"><strong>Monthly limit reached</strong>Upgrade to continue.</div>', unsafe_allow_html=True)

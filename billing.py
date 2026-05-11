@@ -4,169 +4,154 @@ Handles: checkout sessions, customer portal, webhook processing, plan upgrades
 """
 
 import os
-import json
 import stripe
 import streamlit as st
 from database import get_profile, update_profile, get_client, PLAN_LIMITS
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# ─── Pricing config (fill in your Stripe Price IDs after creating products) ────
 PLANS = {
     "starter": {
-        "name": "Starter",
-        "price": "$49",
-        "period": "/ month",
+        "name":           "Starter",
+        "price":          "$29",
+        "period":         "/ month",
         "stripe_price_id": os.getenv("STRIPE_PRICE_STARTER", "price_REPLACE_ME_STARTER"),
-        "color": "#0369a1",
-        "bg": "#e0f2fe",
+        "color":          "#0369a1",
         "features": [
             "50 analyses / month",
-            "Batch upload (5 drawings)",
+            "Full quote engine + customer portal",
+            "Job traveler & setup sheet",
+            "Pre-machining checklist",
             "PDF support",
             "CSV & JSON export",
-            "30-day history",
+            "Single user",
             "Email support",
         ],
     },
     "pro": {
-        "name": "Pro",
-        "price": "$149",
-        "period": "/ month",
+        "name":           "Pro",
+        "price":          "$99",
+        "period":         "/ month",
         "stripe_price_id": os.getenv("STRIPE_PRICE_PRO", "price_REPLACE_ME_PRO"),
-        "color": "#d97706",
-        "bg": "#fef3c7",
+        "color":          "#d97706",
+        "highlighted":    True,
         "features": [
             "300 analyses / month",
-            "Batch upload (20 drawings)",
-            "PDF support",
-            "Team workspaces (up to 10 seats)",
-            "Full history + search",
+            "Everything in Starter",
+            "FAI report generation",
+            "Job tracker (actual vs estimated)",
+            "Machine capability profiles",
+            "Material price library",
+            "Repeat part detection",
+            "Team workspaces (up to 5 seats)",
+            "Revision comparison",
             "Priority support",
-            "Deep Review mode",
         ],
-        "highlighted": True,
     },
     "enterprise": {
-        "name": "Enterprise",
-        "price": "Custom",
-        "period": "",
+        "name":           "Enterprise",
+        "price":          "Custom",
+        "period":         "",
         "stripe_price_id": None,
-        "color": "#7c3aed",
-        "bg": "#ede9fe",
+        "color":          "#7c3aed",
         "features": [
             "Unlimited analyses",
-            "Unlimited batch size",
             "Unlimited team seats",
-            "Dedicated account manager",
+            "White label option",
+            "API access",
             "SSO / SAML",
-            "Custom integrations",
+            "Dedicated account manager",
             "SLA guarantee",
+            "Custom integrations",
         ],
     },
 }
 
 FREE_PLAN = {
-    "name": "Free",
-    "price": "$0",
-    "period": "/ month",
+    "name":    "Free",
+    "price":   "$0",
+    "period":  "/ month",
     "features": [
         "5 analyses / month",
         "Single file upload",
         "Images only (no PDF)",
-        "Basic export",
-        "7-day history",
+        "Basic flags & dimensions",
+        "No quote engine",
+        "No export",
     ],
 }
 
 
 def create_checkout_session(user_id: str, plan_key: str, email: str) -> str | None:
-    """Creates a Stripe Checkout session and returns the URL."""
     plan = PLANS.get(plan_key)
     if not plan or not plan.get("stripe_price_id") or "REPLACE_ME" in plan["stripe_price_id"]:
-        raise ValueError(f"Stripe Price ID for '{plan_key}' is not configured. "
-                         "Set STRIPE_PRICE_STARTER / STRIPE_PRICE_PRO in your .env")
-
-    profile = get_profile(user_id)
+        raise ValueError(
+            f"Stripe not connected yet. Set STRIPE_PRICE_{plan_key.upper()} "
+            f"in your Streamlit secrets after creating products in Stripe."
+        )
+    profile     = get_profile(user_id)
     customer_id = profile.get("stripe_customer_id") if profile else None
-
     params = {
-        "mode": "subscription",
+        "mode":       "subscription",
         "line_items": [{"price": plan["stripe_price_id"], "quantity": 1}],
-        "success_url": os.getenv("APP_URL", "http://localhost:8501") + "?billing=success",
-        "cancel_url":  os.getenv("APP_URL", "http://localhost:8501") + "?billing=cancel",
-        "metadata": {"user_id": user_id, "plan": plan_key},
+        "success_url": os.getenv("APP_URL", "https://drawingiq.streamlit.app") + "?billing=success",
+        "cancel_url":  os.getenv("APP_URL", "https://drawingiq.streamlit.app") + "?billing=cancel",
+        "metadata":    {"user_id": user_id, "plan": plan_key},
         "client_reference_id": user_id,
-        "subscription_data": {"metadata": {"user_id": user_id, "plan": plan_key}},
+        "subscription_data":   {"metadata": {"user_id": user_id, "plan": plan_key}},
     }
-
     if customer_id:
         params["customer"] = customer_id
     else:
         params["customer_email"] = email
-
     session = stripe.checkout.Session.create(**params)
     return session.url
 
 
 def create_portal_session(user_id: str) -> str | None:
-    """Opens Stripe Customer Portal for managing/canceling subscriptions."""
     profile = get_profile(user_id)
     if not profile or not profile.get("stripe_customer_id"):
-        raise ValueError("No Stripe customer found for this user.")
-
+        raise ValueError("No Stripe customer found. Please upgrade first.")
     session = stripe.billing_portal.Session.create(
         customer=profile["stripe_customer_id"],
-        return_url=os.getenv("APP_URL", "http://localhost:8501"),
+        return_url=os.getenv("APP_URL", "https://drawingiq.streamlit.app"),
     )
     return session.url
 
 
 def handle_webhook(payload: bytes, sig_header: str) -> dict:
-    """
-    Process Stripe webhooks. Call this from a FastAPI/Flask endpoint or
-    Streamlit route handler.
-
-    Webhook events handled:
-      - checkout.session.completed  → activate subscription
-      - customer.subscription.updated → plan change
-      - customer.subscription.deleted → downgrade to free
-      - invoice.payment_failed       → notify user
-    """
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except stripe.error.SignatureVerificationError:
         return {"error": "Invalid signature"}
 
-    db = get_client()
+    db    = get_client()
     etype = event["type"]
     data  = event["data"]["object"]
 
     if etype == "checkout.session.completed":
-        user_id = data.get("metadata", {}).get("user_id") or data.get("client_reference_id")
-        plan    = data.get("metadata", {}).get("plan", "starter")
-        customer_id    = data.get("customer")
+        user_id         = data.get("metadata", {}).get("user_id") or data.get("client_reference_id")
+        plan            = data.get("metadata", {}).get("plan", "starter")
+        customer_id     = data.get("customer")
         subscription_id = data.get("subscription")
         if user_id:
             update_profile(user_id, {
-                "plan": plan,
-                "stripe_customer_id": customer_id,
+                "plan":                   plan,
+                "stripe_customer_id":     customer_id,
                 "stripe_subscription_id": subscription_id,
-                "analyses_this_month": 0,  # reset on new plan
+                "analyses_this_month":    0,
             })
 
     elif etype == "customer.subscription.updated":
         subscription_id = data["id"]
-        status = data["status"]
-        # Look up user by subscription ID
-        profiles = db.table("profiles").select("id, plan").eq(
+        status          = data["status"]
+        profiles        = db.table("profiles").select("id").eq(
             "stripe_subscription_id", subscription_id
         ).execute().data
         if profiles:
             user_id = profiles[0]["id"]
             if status in ("active", "trialing"):
-                # Get plan from price metadata if possible
                 price_id = data["items"]["data"][0]["price"]["id"]
                 new_plan = _price_id_to_plan(price_id)
                 update_profile(user_id, {"plan": new_plan})
@@ -175,13 +160,12 @@ def handle_webhook(payload: bytes, sig_header: str) -> dict:
 
     elif etype == "customer.subscription.deleted":
         subscription_id = data["id"]
-        profiles = db.table("profiles").select("id").eq(
+        profiles        = db.table("profiles").select("id").eq(
             "stripe_subscription_id", subscription_id
         ).execute().data
         if profiles:
             update_profile(profiles[0]["id"], {
-                "plan": "free",
-                "stripe_subscription_id": None
+                "plan": "free", "stripe_subscription_id": None
             })
 
     return {"status": "ok", "event": etype}
@@ -195,109 +179,305 @@ def _price_id_to_plan(price_id: str) -> str:
 
 
 def reset_monthly_usage():
-    """
-    Call this via a cron job on the 1st of each month.
-    Resets analyses_this_month for all users.
-    """
     db = get_client()
     db.table("profiles").update({"analyses_this_month": 0}).neq("id", "none").execute()
 
 
-# ─── UI Components ──────────────────────────────────────────────────────────────
+# ─── Free tier abuse prevention ───────────────────────────────────────────────
+
+def check_abuse_risk(email: str, profile: dict) -> dict:
+    """
+    Returns a risk assessment for potential free tier abuse.
+    Checks: disposable email domains, account age, usage patterns.
+    """
+    risk    = {"level": "low", "reasons": []}
+    
+    # Known disposable email domains
+    disposable = [
+        "mailinator.com", "guerrillamail.com", "tempmail.com", "throwaway.email",
+        "yopmail.com", "sharklasers.com", "guerrillamailblock.com", "grr.la",
+        "guerrillamail.info", "spam4.me", "trashmail.com", "mailnull.com",
+        "spamgourmet.com", "trashmail.me", "dispostable.com", "maildrop.cc",
+        "fakeinbox.com", "tempinbox.com", "getairmail.com", "filzmail.com",
+        "throwam.com", "discard.email", "spamhereplease.com", "mailnew.com",
+        "spamex.com", "mytrashmail.com", "mt2015.com", "spamfree24.org",
+        "0-mail.com", "0815.ru", "10minutemail.com", "20minutemail.com",
+    ]
+    domain = email.split("@")[-1].lower() if "@" in email else ""
+    if domain in disposable:
+        risk["level"]   = "high"
+        risk["reasons"].append("Disposable email address detected.")
+
+    # No company set (weak signal but worth noting)
+    if not profile.get("company"):
+        risk["reasons"].append("No company set on account.")
+
+    # Account very new + already at limit
+    from datetime import datetime, timezone
+    created = profile.get("created_at", "")
+    if created:
+        try:
+            created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            age_hours  = (datetime.now(timezone.utc) - created_dt).total_seconds() / 3600
+            if age_hours < 2 and profile.get("analyses_this_month", 0) >= 4:
+                risk["level"] = "high"
+                risk["reasons"].append("Account hit usage limit within 2 hours of creation.")
+            elif age_hours < 24:
+                if risk["level"] != "high":
+                    risk["level"] = "medium"
+                risk["reasons"].append("Account less than 24 hours old.")
+        except Exception:
+            pass
+
+    return risk
+
+
+def enforce_free_limits(profile: dict, email: str) -> tuple[bool, str]:
+    """
+    Extra enforcement on top of normal plan limits.
+    Returns (allowed, reason).
+    """
+    plan = profile.get("plan", "free")
+    if plan != "free":
+        return True, ""
+
+    risk = check_abuse_risk(email, profile)
+    if risk["level"] == "high":
+        return False, (
+            "Your account has been flagged for review. "
+            "Please upgrade to a paid plan or contact support@drawingiq.com."
+        )
+    return True, ""
+
+
+# ─── UI ───────────────────────────────────────────────────────────────────────
 
 BILLING_CSS = """
 <style>
-.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0; }
+.pricing-wrap {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
 .pricing-card {
     background: white;
-    border: 1.5px solid #e2e6f0;
-    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
     padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
-.pricing-card.highlighted { border-color: #ff6b35; box-shadow: 0 0 0 3px rgba(255,107,53,0.1); }
-.pricing-card .plan-name  { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
-.pricing-card .price      { font-size: 2rem; font-weight: 700; color: #1a1d2e; line-height: 1; }
-.pricing-card .period     { font-size: 0.85rem; color: #6b7280; }
-.pricing-card .feature-list { margin: 1rem 0; padding: 0; list-style: none; }
-.pricing-card .feature-list li { font-size: 0.85rem; color: #374151; padding: 3px 0; }
-.pricing-card .feature-list li::before { content: "✓  "; color: #16a34a; font-weight: 700; }
-.usage-bar-bg { background: #f3f4f6; border-radius: 20px; height: 8px; margin: 0.5rem 0; }
-.usage-bar    { background: #ff6b35; border-radius: 20px; height: 8px; transition: width 0.4s; }
+.pricing-card.highlighted {
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.15);
+}
+.most-popular-badge {
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+.most-popular-badge span {
+    background: #f97316;
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.pc-plan-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+}
+.pc-price {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1;
+    font-family: 'IBM Plex Mono', monospace;
+}
+.pc-period {
+    font-size: 0.82rem;
+    color: #6b7280;
+    margin-left: 4px;
+}
+.pc-features {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+}
+.pc-features li {
+    font-size: 0.83rem;
+    color: #374151;
+    padding: 4px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    border-bottom: 1px solid #f8faff;
+}
+.pc-features li::before {
+    content: "✓";
+    color: #16a34a;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.usage-bar-bg {
+    background: #f3f4f6;
+    border-radius: 20px;
+    height: 8px;
+    margin: 0.5rem 0;
+}
+.usage-bar {
+    background: #2563eb;
+    border-radius: 20px;
+    height: 8px;
+    transition: width 0.4s;
+}
 .usage-bar.danger { background: #dc2626; }
 </style>
 """
 
 
 def render_pricing_page(user_id: str, email: str, current_plan: str):
-    """Full pricing/upgrade page."""
     st.markdown(BILLING_CSS, unsafe_allow_html=True)
     st.markdown("## Upgrade DrawingIQ")
     st.caption("Upgrade or downgrade anytime. Cancel at any time.")
 
-    cols = st.columns(4)
-    plan_order = ["free", "starter", "pro", "enterprise"]
-    plan_data_list = [{"key": "free", **FREE_PLAN}] + [
-        {"key": k, **PLANS[k]} for k in ["starter", "pro", "enterprise"]
+    # Stripe not configured warning
+    stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
+    if not stripe_key or stripe_key == "":
+        st.warning(
+            "💳 **Stripe not connected yet.** "
+            "To accept payments, add your Stripe keys to Streamlit secrets. "
+            "See setup instructions below."
+        )
+        with st.expander("📋 How to connect Stripe"):
+            st.markdown("""
+            **Step 1:** Go to [stripe.com](https://stripe.com) and create an account
+
+            **Step 2:** In Stripe Dashboard → Products → Create two products:
+            - **DrawingIQ Starter** — $29/month recurring
+            - **DrawingIQ Pro** — $99/month recurring
+
+            **Step 3:** Copy the Price IDs (start with `price_...`)
+
+            **Step 4:** Add to your Streamlit secrets:
+            ```
+            STRIPE_SECRET_KEY = "sk_live_..."
+            STRIPE_PRICE_STARTER = "price_..."
+            STRIPE_PRICE_PRO = "price_..."
+            STRIPE_WEBHOOK_SECRET = "whsec_..."
+            ```
+
+            **Step 5:** Set up webhook in Stripe Dashboard → Developers → Webhooks:
+            - Endpoint: `https://yourapp.streamlit.app/webhook`
+            - Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
+            """)
+
+    # Pricing cards
+    st.markdown('<div class="pricing-wrap">', unsafe_allow_html=True)
+    
+    plan_list = [
+        {"key": "free",       **FREE_PLAN},
+        {"key": "starter",    **{k:v for k,v in PLANS["starter"].items()}},
+        {"key": "pro",        **{k:v for k,v in PLANS["pro"].items()}},
+        {"key": "enterprise", **{k:v for k,v in PLANS["enterprise"].items()}},
     ]
 
-    for i, (col, plan) in enumerate(zip(cols, plan_data_list)):
+    cols = st.columns(4)
+    plan_order = ["free", "starter", "pro", "enterprise"]
+
+    for i, (col, plan) in enumerate(zip(cols, plan_list)):
         with col:
-            is_current = plan["key"] == current_plan
+            is_current  = plan["key"] == current_plan
             highlighted = plan.get("highlighted", False)
-            border = "border: 2px solid #ff6b35;" if highlighted else ""
+            name_color  = plan.get("color", "#374151")
+
+            popular_html = ""
+            if highlighted:
+                popular_html = '<div class="most-popular-badge"><span>Most Popular</span></div>'
+
+            features_html = "".join(
+                f'<li>{f}</li>' for f in plan["features"]
+            )
+
+            card_class = "pricing-card highlighted" if highlighted else "pricing-card"
 
             st.markdown(f"""
-            <div class="pricing-card {'highlighted' if highlighted else ''}" style="{border}">
-                {'<div style="text-align:center;margin-bottom:0.5rem;"><span style="background:#ff6b35;color:white;font-size:0.7rem;font-weight:700;padding:3px 10px;border-radius:20px;">MOST POPULAR</span></div>' if highlighted else ''}
-                <div class="plan-name" style="color:{plan.get('color','#374151')}">{plan['name']}</div>
-                <div><span class="price">{plan['price']}</span> <span class="period">{plan.get('period','')}</span></div>
-                <ul class="feature-list">
-                    {"".join(f"<li>{f}</li>" for f in plan['features'])}
-                </ul>
+            <div class="{card_class}">
+                {popular_html}
+                <div class="pc-plan-name" style="color:{name_color};">{plan['name']}</div>
+                <div>
+                    <span class="pc-price">{plan['price']}</span>
+                    <span class="pc-period">{plan.get('period','')}</span>
+                </div>
+                <ul class="pc-features">{features_html}</ul>
             </div>
             """, unsafe_allow_html=True)
 
             if is_current:
-                st.success("Current plan")
-            elif plan["key"] == "enterprise":
-                if st.button("Contact Sales", key=f"btn_{plan['key']}", use_container_width=True):
-                    st.info("Email us at sales@drawingiq.com")
+                st.success("✓ Current plan", icon=None)
             elif plan["key"] == "free":
                 if current_plan != "free":
-                    if st.button("Downgrade", key=f"btn_{plan['key']}", use_container_width=True):
-                        st.warning("To cancel, use Manage Subscription below.")
+                    st.button("Downgrade to Free", key=f"btn_free",
+                              help="Cancel via Manage Subscription below.",
+                              use_container_width=True)
+            elif plan["key"] == "enterprise":
+                if st.button("Contact Sales", key="btn_enterprise",
+                             use_container_width=True):
+                    st.info("Email us at sales@drawingiq.com")
             else:
-                label = "Upgrade" if i > plan_order.index(current_plan) else "Change Plan"
-                if st.button(label, key=f"btn_{plan['key']}", type="primary", use_container_width=True):
-                    try:
-                        url = create_checkout_session(user_id, plan["key"], email)
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        st.info(f"Redirecting to Stripe… [Click here if not redirected]({url})")
-                    except ValueError as e:
-                        st.error(str(e))
+                label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
+                if st.button(label, key=f"btn_{plan['key']}",
+                             type="primary", use_container_width=True):
+                    if not stripe_key:
+                        st.error("Stripe not connected yet. See setup instructions above.")
+                    else:
+                        try:
+                            url = create_checkout_session(user_id, plan["key"], email)
+                            st.markdown(
+                                f'<meta http-equiv="refresh" content="0; url={url}">',
+                                unsafe_allow_html=True,
+                            )
+                            st.info(f"Redirecting to Stripe… [Click here if not redirected]({url})")
+                        except ValueError as e:
+                            st.error(str(e))
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Manage subscription
     if current_plan != "free":
         st.markdown("---")
-        if st.button("⚙ Manage Subscription / Cancel", use_container_width=False):
-            try:
-                url = create_portal_session(user_id)
-                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                st.info(f"Redirecting to Stripe Portal… [Click here]({url})")
-            except ValueError as e:
-                st.error(str(e))
+        if st.button("⚙ Manage Subscription / Cancel"):
+            if not stripe_key:
+                st.error("Stripe not connected yet.")
+            else:
+                try:
+                    url = create_portal_session(user_id)
+                    st.markdown(
+                        f'<meta http-equiv="refresh" content="0; url={url}">',
+                        unsafe_allow_html=True,
+                    )
+                    st.info(f"Redirecting to Stripe Portal… [Click here]({url})")
+                except ValueError as e:
+                    st.error(str(e))
 
 
 def render_usage_bar(used: int, limit: int, plan: str):
-    """Compact usage bar for sidebar."""
-    pct = min(int(used / max(limit, 1) * 100), 100)
-    color_class = "danger" if pct >= 90 else ""
+    pct       = min(int(used / max(limit, 1) * 100), 100)
+    color_cls = "danger" if pct >= 90 else ""
     limit_str = "∞" if limit >= 99999 else str(limit)
     st.markdown(BILLING_CSS, unsafe_allow_html=True)
     st.markdown(f"""
-    <div style="font-size:0.8rem;color:#6b7280;margin-bottom:4px;">
-        Usage: <strong style="color:#1a1d2e;">{used}</strong> / {limit_str} this month
+    <div style="font-size:0.8rem;color:#7aa2d4;margin-bottom:4px;">
+        Usage: <strong style="color:#e2e8f0;">{used}</strong> / {limit_str} this month
     </div>
     <div class="usage-bar-bg">
-        <div class="usage-bar {color_class}" style="width:{pct}%"></div>
+        <div class="usage-bar {color_cls}" style="width:{pct}%;"></div>
     </div>
     """, unsafe_allow_html=True)
