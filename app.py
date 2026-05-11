@@ -597,7 +597,7 @@ elif page == "📋 History":
                 if st.button("🗑 Del",key=f"del_{aid}",use_container_width=True): st.session_state["pending_delete"]=aid; st.rerun()
             st.markdown("<div style='margin-bottom:0.2rem'></div>", unsafe_allow_html=True)
         if "viewing_analysis" in st.session_state:
-            aid=st.session_state["viewing_analysis"]; record=get_analysis_by_id(aid,user_id=user["id"])
+            aid=st.session_state["viewing_analysis"]; record=get_analysis_by_id(aid)
             if record:
                 st.markdown("---"); st.markdown(f"### {esc(record['filename'])}")
                 if st.button("✕ Close",key="close_view"): del st.session_state["viewing_analysis"]; st.rerun()
@@ -618,7 +618,7 @@ elif page == "🔍 Compare":
         with cmp1: sel1=st.selectbox("Drawing A",keys,index=0,key="cmp_a")
         with cmp2: sel2=st.selectbox("Drawing B",keys,index=min(1,len(keys)-1),key="cmp_b")
         if st.button("Compare →",type="primary",use_container_width=True):
-            r1=get_analysis_by_id(options[sel1],user_id=user["id"]); r2=get_analysis_by_id(options[sel2],user_id=user["id"])
+            r1=get_analysis_by_id(options[sel1]); r2=get_analysis_by_id(options[sel2])
             if r1 and r2:
                 d1=r1["result_json"]; d2=r2["result_json"]; st.markdown("---")
                 compare_fields=[("Drawing Type","drawing_type"),("Part Name","part_name"),("Part Number","part_number"),("Revision","revision"),("Material","material"),("Material Spec","material_spec"),("Surface Finish","surface_finish"),("Heat Treatment","heat_treatment"),("Scale","scale"),("Units","units"),("Complexity","estimated_complexity"),("Setups Est.","setup_count_estimate"),("Tol. Stack Risk","tolerance_stack_risk"),("Confidence","confidence_score")]
@@ -646,7 +646,7 @@ elif page == "✅ Review Checklist":
         options={f'{a.get("filename","")!s} — {str(a.get("created_at",""))[:10]}':a["id"] for a in analyses}
         sel=st.selectbox("Select Drawing",list(options.keys()))
         if st.button("Generate Checklist",type="primary"):
-            record=get_analysis_by_id(options[sel],user_id=user["id"])
+            record=get_analysis_by_id(options[sel])
             if record:
                 result=record["result_json"]; checks=build_checklist(result)
                 passed=sum(1 for c in checks if c["status"]=="pass"); failed=sum(1 for c in checks if c["status"]=="fail"); warned=sum(1 for c in checks if c["status"]=="warn")
