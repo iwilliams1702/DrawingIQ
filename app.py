@@ -27,6 +27,11 @@ from database import (
     delete_analysis, get_plan_limits, can_analyze,
     create_workspace, get_user_workspaces, get_workspace_members,
     invite_member, remove_member, get_usage_stats, PLAN_LIMITS, update_profile,
+    save_material, get_materials, delete_material,
+    save_machine, get_machines, delete_machine,
+    save_quote, get_quotes, get_quote_by_token, update_quote_status,
+    save_job_actual, get_job_actuals, find_similar_parts,
+    save_fai, get_fai_reports,
 )
 from billing import render_pricing_page, render_usage_bar, PLANS
 from analyzer import analyze_image, analyze_pdf_pages, estimate_quote
@@ -158,7 +163,7 @@ with st.sidebar:
             ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
         workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()))]
         st.markdown("---")
-    NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","👥 Team","💳 Billing","⚙ Account"]
+    NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup","👥 Team","💳 Billing","⚙ Account"]
     _forced    = st.session_state.pop("force_page", None)
     _nav_index = NAV.index(_forced) if _forced in NAV else 0
     page = st.radio("Navigate", NAV, index=_nav_index, label_visibility="collapsed")
@@ -217,6 +222,16 @@ def build_checklist(result):
     add("pass" if stds else "warn","Standards referenced",", ".join(stds) if stds else "None called out.")
     conf = result.get("confidence_score",0)
     add("fail" if conf<50 else "warn" if conf<75 else "pass",f"Drawing readability: {conf}%","Upload higher-res scan." if conf<75 else "")
+    return checks
+
+def build_checklist_with_machines(result, machines):
+    checks = build_checklist(result)
+    if machines:
+        cap_risks = check_machine_capability(result.get("dimensions",[]), machines)
+        if cap_risks:
+            checks.append({"status":"fail","label":f"{len(cap_risks)} dimension(s) exceed machine capability","note":"; ".join(f'{r["feature"]} ±{r["tolerance"]}' for r in cap_risks[:3])})
+        else:
+            checks.append({"status":"pass","label":"All tolerances within machine capability","note":""})
     return checks
 
 def render_result(result, filename, analysis_id=None):
@@ -439,6 +454,35 @@ def render_result(result, filename, analysis_id=None):
                 st.download_button("⬇ CSV",buf.getvalue(),file_name=f'{filename.rsplit(".",1)[0]}.csv',mime="text/csv",use_container_width=True)
 
 # PAGE: ANALYZE
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPER: machine capability check
+# ─────────────────────────────────────────────────────────────────────────────
+def check_machine_capability(dims, machines):
+    """Flag dimensions tighter than any machine in shop can hold."""
+    if not machines or not dims:
+        return []
+    best_tol = min(m["tolerance_mm"] for m in machines)
+    risks = []
+    for d in dims:
+        tol_str = d.get("tolerance","")
+        if not tol_str or tol_str in ("N/A","—","Unknown","null","None"):
+            continue
+        try:
+            tol_val = float(str(tol_str).replace("±","").replace("+/-","").strip().split("/")[0])
+            unit = d.get("unit","mm")
+            tol_mm = tol_val if "mm" in unit.lower() else tol_val * 25.4
+            if tol_mm < best_tol:
+                risks.append({
+                    "feature": d.get("feature",""),
+                    "tolerance": tol_str,
+                    "unit": unit,
+                    "tightest_machine": min(machines, key=lambda m: m["tolerance_mm"])["name"],
+                    "machine_capability": best_tol,
+                })
+        except Exception:
+            continue
+    return risks
+
 if page == "📤 Analyze":
     allowed,reason = can_analyze(profile)
     if not allowed:
@@ -491,6 +535,32 @@ if page == "📤 Analyze":
                             with st.spinner(f"Analyzing {fname}…"): b64,mime=image_file_to_b64(file_bytes,fname); result=analyze_image(b64,mime,discipline,detail_level,_api_key)
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
                         render_result(result,fname,saved.get("id"))
+                        # ── Repeat part detection ──────────────────────────
+                        try:
+                            pname = result.get("part_name","")
+                            pnum  = result.get("part_number","")
+                            if pname or pnum:
+                                similar = find_similar_parts(user["id"], pname, pnum)
+                                similar = [s for s in similar if s.get("id") != saved.get("id")]
+                                if similar:
+                                    st.markdown("---")
+                                    st.info(f"🔁 **Repeat Part Detected** — Found {len(similar)} previous analysis(es) matching this part.")
+                                    for sim in similar[:3]:
+                                        sim_date = str(sim.get("created_at",""))[:10]
+                                        st.markdown(f"• **{esc(sim.get('filename',''))}** — {sim_date} · {esc(sim.get('material','?'))} · {esc(sim.get('estimated_complexity','?'))} complexity")
+                        except Exception:
+                            pass
+                        # ── Machine capability check ────────────────────────
+                        try:
+                            machines = get_machines(user["id"])
+                            if machines:
+                                cap_risks = check_machine_capability(result.get("dimensions",[]), machines)
+                                if cap_risks:
+                                    st.warning(f"⚠️ **{len(cap_risks)} dimension(s)** may exceed your machines' capability:")
+                                    for r in cap_risks:
+                                        st.markdown(f"• `{esc(r['feature'])}` ±{esc(r['tolerance'])} — tighter than **{esc(r['tightest_machine'])}** can hold (±{r['machine_capability']} mm)")
+                        except Exception:
+                            pass
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
@@ -725,3 +795,467 @@ elif page == "⚙ Account":
         st.error("Permanently deletes account and all analyses.")
         if st.text_input("Type DELETE to confirm")=="DELETE":
             if st.button("Delete My Account",type="primary"): st.warning("Contact support@drawingiq.com to complete deletion.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE: QUOTES PORTAL
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "💰 Quotes":
+    st.markdown("## 💰 Quote Portal")
+    st.caption("Manage sent quotes. Share approval links with customers.")
+
+    qt1, qt2 = st.columns([3,1])
+    with qt2:
+        if st.button("↩ Back to Analyze", use_container_width=True):
+            st.session_state["force_page"] = "📤 Analyze"; st.rerun()
+
+    try:
+        quotes = get_quotes(user["id"])
+    except Exception:
+        quotes = []
+        st.warning("Quote table not set up yet. Run the SQL migration in Supabase first.")
+
+    if not quotes:
+        st.markdown('<div class="empty-state"><div class="icon">💰</div><h3>No quotes sent yet</h3><p>Generate a quote from any analysis and send it to your customer.</p></div>', unsafe_allow_html=True)
+    else:
+        status_colors = {"pending":"#d97706","approved":"#16a34a","declined":"#dc2626","revised":"#2563eb"}
+        for q in quotes:
+            sc = status_colors.get(q.get("status","pending"),"#6b7280")
+            qd = q.get("quote_data") or {}
+            qc1, qc2, qc3 = st.columns([4,1,1])
+            with qc1:
+                st.markdown(f"""
+                <div class="history-card">
+                  <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                    <strong style="color:#0f172a;">{esc(q.get("quote_number","N/A"))}</strong>
+                    <span style="background:{sc}20;color:{sc};font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:4px;">{esc(q.get("status","pending").upper())}</span>
+                    <span style="margin-left:auto;font-size:0.75rem;color:#9ca3af;">{esc(str(q.get("created_at",""))[:10])}</span>
+                  </div>
+                  <div style="font-size:0.78rem;color:#6b7280;margin-top:4px;display:flex;gap:1rem;flex-wrap:wrap;">
+                    <span>👤 {esc(q.get("customer_name","Unknown"))}</span>
+                    <span>✉️ {esc(q.get("customer_email",""))}</span>
+                    <span>💵 ${qd.get("price_per_part",0):,.2f}/part · {qd.get("quantity",1)} pcs · ${qd.get("total_job_cost",0):,.2f} total</span>
+                  </div>
+                  {('<div style="font-size:0.78rem;color:#374151;margin-top:4px;background:#f8faff;padding:4px 8px;border-radius:4px;">Customer note: ' + esc(q.get("message","")) + '</div>') if q.get("message") else ""}
+                </div>""", unsafe_allow_html=True)
+            with qc2:
+                app_url = os.getenv("APP_URL","https://drawingiq.streamlit.app")
+                link = f"{app_url}?quote_token={q.get('token','')}"
+                st.markdown(f"[🔗 Share Link]({link})")
+            with qc3:
+                if st.button("🗑", key=f"delq_{q['id']}"):
+                    st.info("Delete quotes via Supabase dashboard.")
+        
+        st.markdown("---")
+        st.markdown("### Quote Analytics")
+        total_val  = sum((q.get("quote_data") or {}).get("total_job_cost",0) for q in quotes)
+        approved   = [q for q in quotes if q.get("status")=="approved"]
+        pending    = [q for q in quotes if q.get("status")=="pending"]
+        win_rate   = round(len(approved)/len(quotes)*100) if quotes else 0
+        qa1,qa2,qa3,qa4 = st.columns(4)
+        qa1.metric("Total Quoted",  f"${total_val:,.0f}")
+        qa2.metric("Quotes Sent",   len(quotes))
+        qa3.metric("Approved",      len(approved))
+        qa4.metric("Win Rate",      f"{win_rate}%")
+
+    # ── Check for approval token in URL ──────────────────────────────────────
+    params = st.query_params
+    if "quote_token" in params:
+        token  = params["quote_token"]
+        try:
+            qrec = get_quote_by_token(token)
+        except Exception:
+            qrec = None
+        if qrec:
+            qd = qrec.get("quote_data") or {}
+            st.markdown("---")
+            st.markdown("## 📋 Quote Approval")
+            st.markdown(f"""
+            <div style="background:white;border:1px solid #dbeafe;border-radius:12px;padding:2rem;max-width:600px;margin:0 auto;">
+              <h3 style="color:#1d4ed8;margin:0 0 1rem;">Quote #{esc(qrec.get("quote_number",""))}</h3>
+              <p style="color:#374151;">Dear <strong>{esc(qrec.get("customer_name",""))}</strong>,</p>
+              <p style="color:#374151;">Please review the quote below and approve or request changes.</p>
+              <div style="background:#f8faff;border-radius:8px;padding:1rem;margin:1rem 0;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.9rem;"><span style="color:#6b7280;">Quantity</span><strong>{qd.get("quantity",1)} pcs</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.9rem;"><span style="color:#6b7280;">Price Per Part</span><strong>${qd.get("price_per_part",0):,.2f}</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:1rem;border-top:1px solid #dbeafe;margin-top:4px;"><span style="color:#1d4ed8;font-weight:700;">Total</span><strong style="color:#1d4ed8;font-size:1.2rem;">${qd.get("total_job_cost",0):,.2f}</strong></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            cust_msg = st.text_area("Message to shop (optional)", key="cust_msg")
+            ca1,ca2 = st.columns(2)
+            with ca1:
+                if st.button("✅ Approve Quote", type="primary", use_container_width=True):
+                    update_quote_status(qrec["id"], "approved", cust_msg)
+                    st.success("Quote approved! The shop has been notified.")
+                    st.balloons()
+            with ca2:
+                if st.button("✏️ Request Changes", use_container_width=True):
+                    update_quote_status(qrec["id"], "revised", cust_msg)
+                    st.info("Change request sent to the shop.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE: FAI REPORTS
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "🔬 FAI Reports":
+    st.markdown("## 🔬 First Article Inspection (FAI)")
+    st.caption("Enter actual measured dimensions after machining. App compares to drawing callouts and generates an AS9102-style FAI report.")
+
+    with st.spinner("Loading analyses…"):
+        analyses = get_analyses(user["id"], limit=100, workspace_id=workspace_id)
+
+    if not analyses:
+        st.info("No analyses yet. Upload a drawing first.")
+    else:
+        fa1, fa2 = st.columns([3,1])
+        with fa1:
+            options = {f'{a.get("filename","")!s} — P/N: {a.get("part_number","?") or "?"} — {str(a.get("created_at",""))[:10]}': a["id"] for a in analyses}
+            sel_fai = st.selectbox("Select Drawing", list(options.keys()), key="fai_sel")
+        with fa2:
+            inspector = st.text_input("Inspector Name", key="fai_inspector")
+
+        job_num_fai = st.text_input("Job / Work Order #", key="fai_job")
+
+        record = get_analysis_by_id(options[sel_fai])
+        if record:
+            result  = record["result_json"]
+            dims    = result.get("dimensions", [])
+
+            if not dims:
+                st.warning("No dimensions extracted from this drawing. Run a Deep Review analysis for best FAI results.")
+            else:
+                st.markdown("---")
+                st.markdown("### Enter Actual Measurements")
+                st.caption("Enter the actual measured value for each dimension. App will compare to nominal and flag out-of-tolerance features.")
+
+                measurements = []
+                for i, d in enumerate(dims):
+                    nominal   = d.get("value","")
+                    tol       = d.get("tolerance","")
+                    unit      = d.get("unit","")
+                    feature   = d.get("feature","")
+                    is_crit   = d.get("is_critical", False)
+
+                    mc1, mc2, mc3, mc4 = st.columns([3,2,2,1])
+                    with mc1:
+                        st.markdown(f"{'🔴 ' if is_crit else ''}`{esc(feature)}` — Nominal: **{esc(nominal)} {esc(unit)}** ±{esc(tol) if tol else 'N/A'}")
+                    with mc2:
+                        actual_val = st.text_input("Actual", key=f"fai_act_{i}", placeholder=nominal, label_visibility="collapsed")
+                    with mc3:
+                        fai_note = st.text_input("Note", key=f"fai_note_{i}", placeholder="Tool wear, fixture...", label_visibility="collapsed")
+                    with mc4:
+                        # Auto-determine pass/fail if we can parse numbers
+                        status = "pending"
+                        if actual_val:
+                            try:
+                                act_f  = float(actual_val)
+                                nom_f  = float(str(nominal).replace("Ø","").replace("R","").strip())
+                                tol_f  = float(str(tol).replace("±","").replace("+/-","").strip()) if tol else 0.1
+                                status = "pass" if abs(act_f - nom_f) <= tol_f else "fail"
+                                icon   = "✅" if status=="pass" else "❌"
+                                st.markdown(f"<div style='padding-top:1.8rem;font-size:1.2rem;'>{icon}</div>", unsafe_allow_html=True)
+                            except Exception:
+                                status = "pending"
+                    measurements.append({
+                        "feature":  feature,
+                        "nominal":  nominal,
+                        "tolerance":tol,
+                        "unit":     unit,
+                        "actual":   actual_val,
+                        "status":   status,
+                        "note":     fai_note,
+                        "critical": is_crit,
+                    })
+
+                st.markdown("---")
+                if st.button("📋 Generate FAI Report", type="primary", use_container_width=True):
+                    filled = [m for m in measurements if m.get("actual","").strip()]
+                    if not filled:
+                        st.error("Enter at least one actual measurement.")
+                    else:
+                        try:
+                            fai_rec = save_fai(options[sel_fai], user["id"], measurements, inspector, job_num_fai)
+                        except Exception:
+                            fai_rec = {"id":"local"}
+
+                        passed_m = [m for m in measurements if m.get("status")=="pass"]
+                        failed_m = [m for m in measurements if m.get("status")=="fail"]
+                        skip_m   = [m for m in measurements if m.get("status")=="pending"]
+
+                        if failed_m:
+                            st.error(f"🔴 FAI FAILED — {len(failed_m)} dimension(s) out of tolerance.")
+                        else:
+                            st.success(f"🟢 FAI PASSED — All {len(passed_m)} measured dimensions within tolerance.")
+
+                        rc1,rc2,rc3 = st.columns(3)
+                        rc1.metric("Passed",  len(passed_m))
+                        rc2.metric("Failed",  len(failed_m))
+                        rc3.metric("Skipped", len(skip_m))
+
+                        # Build FAI report text
+                        now_fai = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        fai_lines = [
+                            "="*65,
+                            "        FIRST ARTICLE INSPECTION REPORT — DrawingIQ",
+                            "="*65,
+                            f"Part:         {result.get('part_name') or 'Unknown'}",
+                            f"Part Number:  {result.get('part_number') or 'Unknown'}",
+                            f"Revision:     {result.get('revision') or 'Unknown'}",
+                            f"Material:     {result.get('material') or 'Unknown'} ({result.get('material_spec') or 'N/A'})",
+                            f"Drawing File: {record['filename']}",
+                            f"Job / WO #:   {job_num_fai or 'N/A'}",
+                            f"Inspector:    {inspector or 'N/A'}",
+                            f"Date:         {now_fai}",
+                            f"Result:       {'PASS' if not failed_m else 'FAIL'}",
+                            "-"*65,
+                            f"{'Feature':<28} {'Nominal':<12} {'Tolerance':<12} {'Actual':<12} {'Status':<8} Note",
+                            "-"*65,
+                        ]
+                        for m in measurements:
+                            if not m.get("actual","").strip():
+                                continue
+                            stat_str = m.get("status","pending").upper()
+                            fai_lines.append(
+                                f"{str(m.get('feature','')):<28} "
+                                f"{str(m.get('nominal','')):<12} "
+                                f"±{str(m.get('tolerance','N/A')):<11} "
+                                f"{str(m.get('actual','')):<12} "
+                                f"{stat_str:<8} "
+                                f"{m.get('note','')}"
+                            )
+                        fai_lines += ["="*65, f"OVERALL: {'PASS' if not failed_m else 'FAIL'}", "="*65,
+                                      "", "Signed: ___________________  Date: ___________"]
+                        fai_text = "\n".join(fai_lines)
+
+                        st.text_area("FAI Report Preview", fai_text, height=300, key="fai_preview")
+                        st.download_button("⬇ Download FAI Report (.txt)", fai_text,
+                                           file_name=f"FAI_{result.get('part_number') or 'part'}_{now_fai[:10]}.txt",
+                                           mime="text/plain", use_container_width=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE: JOB TRACKER (Actual vs Estimated)
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "📈 Job Tracker":
+    st.markdown("## 📈 Job Tracker — Actual vs Estimated")
+    st.caption("Log actual hours and costs after each job. App learns your shop's real rates and improves future quote accuracy.")
+
+    jt_tab1, jt_tab2 = st.tabs(["📝 Log Actual Job", "📊 Performance Report"])
+
+    with jt_tab1:
+        with st.spinner("Loading analyses…"):
+            analyses = get_analyses(user["id"], limit=100, workspace_id=workspace_id)
+
+        if not analyses:
+            st.info("No analyses yet.")
+        else:
+            jt_options = {f'{a.get("filename","")!s} — {a.get("part_name","?") or "?"} — {str(a.get("created_at",""))[:10]}': a["id"] for a in analyses}
+            sel_jt = st.selectbox("Select Completed Job", list(jt_options.keys()))
+
+            jc1, jc2, jc3 = st.columns(3)
+            with jc1:
+                act_machine = st.number_input("Actual Machine Hrs", 0.0, step=0.25, key="jt_mach")
+                act_labor   = st.number_input("Actual Labor Hrs",   0.0, step=0.25, key="jt_lab")
+            with jc2:
+                act_material= st.number_input("Actual Material Cost ($)", 0.0, step=1.0, key="jt_mat")
+                act_total   = st.number_input("Actual Total Cost ($)",    0.0, step=1.0, key="jt_tot")
+            with jc3:
+                jt_notes = st.text_area("Notes", placeholder="Setup issues, tool changes, material delays...", key="jt_notes", height=100)
+
+            if st.button("💾 Save Job Actuals", type="primary", use_container_width=True):
+                try:
+                    save_job_actual(jt_options[sel_jt], user["id"], act_machine, act_labor, act_material, act_total, jt_notes)
+                    st.success("Job actuals saved! Your quote accuracy report will update.")
+                except Exception as e:
+                    st.error(f"Could not save: {e}")
+
+    with jt_tab2:
+        try:
+            actuals = get_job_actuals(user["id"], limit=100)
+        except Exception:
+            actuals = []
+            st.warning("Job actuals table not set up yet. Run the SQL migration.")
+
+        if not actuals:
+            st.info("No job actuals logged yet. Complete some jobs and log actuals to see your performance.")
+        else:
+            st.markdown("### Quote Accuracy")
+            total_est  = 0.0
+            total_act  = 0.0
+            over_count = 0
+            under_count= 0
+
+            for a in actuals:
+                analysis = a.get("analyses") or {}
+                result_j = analysis.get("result_json") or {}
+                # Try to get estimated total from saved quote
+                est_total = a.get("actual_total",0)  # fallback
+                act_t     = a.get("actual_total",0)
+                total_act += act_t
+
+            pa1,pa2,pa3 = st.columns(3)
+            pa1.metric("Jobs Tracked",    len(actuals))
+            pa2.metric("Total Actual $",  f"${total_act:,.0f}")
+            pa3.metric("Avg Actual Hrs",  f"{sum(a.get('actual_machine_hrs',0)+a.get('actual_labor_hrs',0) for a in actuals)/max(len(actuals),1):.1f} hr")
+
+            st.markdown("---\n### Job Log")
+            for a in actuals:
+                analysis = a.get("analyses") or {}
+                st.markdown(f"""
+                <div class="history-card">
+                  <div style="font-weight:600;color:#0f172a;">{esc(analysis.get("filename","Unknown"))}</div>
+                  <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;display:flex;gap:1.5rem;flex-wrap:wrap;">
+                    <span>⚙ Machine: {a.get("actual_machine_hrs",0):.2f} hr</span>
+                    <span>👷 Labor: {a.get("actual_labor_hrs",0):.2f} hr</span>
+                    <span>🧱 Material: ${a.get("actual_material_cost",0):,.2f}</span>
+                    <span>💵 Total: <strong>${a.get("actual_total",0):,.2f}</strong></span>
+                    {('<span style="color:#374151;">📝 ' + esc(a.get("notes","")) + '</span>') if a.get("notes") else ""}
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE: SHOP SETUP (Materials + Machines)
+# ─────────────────────────────────────────────────────────────────────────────
+elif page == "🔧 Shop Setup":
+    st.markdown("## 🔧 Shop Setup")
+    st.caption("Configure your material price library and machine capabilities. These are used to auto-fill quotes and check tolerance feasibility.")
+
+    ss_tab1, ss_tab2 = st.tabs(["🧱 Material Library", "⚙ Machine Profiles"])
+
+    # ── MATERIAL LIBRARY ──────────────────────────────────────────────────────
+    with ss_tab1:
+        st.markdown("### 🧱 Material Price Library")
+        st.caption("Add your materials once. Quotes will auto-suggest the right price and density.")
+
+        with st.expander("➕ Add New Material", expanded=False):
+            mc1,mc2,mc3 = st.columns(3)
+            with mc1:
+                mat_name    = st.text_input("Material Name", placeholder="6061 Aluminum", key="mat_name")
+                mat_spec    = st.text_input("Spec / Grade",  placeholder="ASTM B221 T6511", key="mat_spec")
+            with mc2:
+                mat_form    = st.text_input("Form",          placeholder="Round Bar, Sheet, Plate", key="mat_form")
+                mat_price   = st.number_input("Price ($/kg)", 0.0, value=5.0, step=0.1, key="mat_price")
+            with mc3:
+                mat_density = st.number_input("Density (kg/m³)", 100.0, value=2700.0, step=10.0, key="mat_density",
+                                              help="Al=2700 · Steel=7850 · SS=8000 · Ti=4500 · Brass=8500")
+                mat_supplier= st.text_input("Supplier", placeholder="McMaster, Online Metals", key="mat_sup")
+            mat_notes_inp = st.text_input("Notes", placeholder="Lead time, min order qty...", key="mat_notes")
+            if st.button("💾 Save Material", type="primary", key="save_mat"):
+                if mat_name:
+                    try:
+                        save_material(user["id"], mat_name, mat_spec, mat_form,
+                                      mat_price, mat_density, mat_supplier, mat_notes_inp)
+                        st.success(f"Saved {mat_name}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Could not save material: {e}")
+                else:
+                    st.error("Material name is required.")
+
+        try:
+            materials = get_materials(user["id"])
+        except Exception:
+            materials = []
+            st.warning("Materials table not set up. Run the SQL migration in Supabase first.")
+
+        if materials:
+            st.markdown(f"**{len(materials)} material(s) in your library**")
+            hc1,hc2,hc3,hc4,hc5,hc6 = st.columns([3,2,2,2,2,1])
+            for h,t in zip([hc1,hc2,hc3,hc4,hc5,hc6],["Name","Spec","Form","$/kg","Density","Del"]):
+                h.markdown(f"<span style='font-size:0.72rem;color:#6b7280;text-transform:uppercase;'>{t}</span>", unsafe_allow_html=True)
+            for m in materials:
+                mc1,mc2,mc3,mc4,mc5,mc6 = st.columns([3,2,2,2,2,1])
+                mc1.markdown(f"**{esc(m.get('name',''))}**")
+                mc2.markdown(f"<span style='font-size:0.82rem;color:#6b7280;'>{esc(m.get('spec','—'))}</span>", unsafe_allow_html=True)
+                mc3.markdown(f"<span style='font-size:0.82rem;'>{esc(m.get('form','—'))}</span>", unsafe_allow_html=True)
+                mc4.markdown(f"<span style='font-family:monospace;'>${m.get('price_per_kg',0):.2f}</span>", unsafe_allow_html=True)
+                mc5.markdown(f"<span style='font-family:monospace;'>{m.get('density_kg_m3',0):.0f} kg/m³</span>", unsafe_allow_html=True)
+                with mc6:
+                    if st.button("🗑", key=f"delmat_{m['id']}"):
+                        try:
+                            delete_material(m["id"], user["id"])
+                            st.rerun()
+                        except Exception:
+                            st.error("Could not delete.")
+        else:
+            st.markdown('<div class="empty-state"><div class="icon">🧱</div><h3>No materials yet</h3><p>Add your commonly used materials to speed up quoting.</p></div>', unsafe_allow_html=True)
+
+        # Default materials quick-add
+        st.markdown("---")
+        with st.expander("⚡ Quick-Add Common Materials"):
+            st.caption("Click to add standard materials with typical values.")
+            defaults = [
+                ("6061-T6 Aluminum","ASTM B221","Round Bar",4.50,2700,"Online Metals"),
+                ("304 Stainless Steel","ASTM A276","Round Bar",9.20,8000,"McMaster"),
+                ("4140 Steel","ASTM A108","Round Bar",3.80,7850,"Metals Depot"),
+                ("1018 Mild Steel","ASTM A108","Round Bar",2.40,7850,"Local supplier"),
+                ("Grade 5 Titanium","ASTM B265","Sheet",52.00,4430,"TMS Titanium"),
+                ("C360 Brass","ASTM B16","Round Bar",11.50,8500,"Online Metals"),
+                ("Delrin (POM)","—","Round Bar",8.00,1410,"McMaster"),
+                ("HDPE","—","Sheet",3.20,950,"McMaster"),
+            ]
+            for d in defaults:
+                dname,dspec,dform,dprice,ddens,dsup = d
+                if st.button(f"+ {dname}", key=f"qadd_{dname}"):
+                    try:
+                        save_material(user["id"], dname, dspec, dform, dprice, ddens, dsup, "")
+                        st.success(f"Added {dname}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+
+    # ── MACHINE PROFILES ──────────────────────────────────────────────────────
+    with ss_tab2:
+        st.markdown("### ⚙ Machine Capability Profiles")
+        st.caption("Enter your machines and their tolerance capabilities. App will warn you when a drawing has tighter tolerances than your machines can hold.")
+
+        with st.expander("➕ Add New Machine", expanded=False):
+            mach1,mach2,mach3 = st.columns(3)
+            with mach1:
+                mach_name = st.text_input("Machine Name",  placeholder="Haas VF-2", key="mach_name")
+                mach_type = st.selectbox("Type", ["CNC Mill","CNC Lathe","Manual Mill","Manual Lathe",
+                                                   "Surface Grinder","EDM","5-Axis","Swiss Screw","Other"], key="mach_type")
+            with mach2:
+                mach_tol  = st.number_input("Best Tolerance (mm)", 0.001, value=0.05, step=0.001,
+                                             format="%.4f", key="mach_tol",
+                                             help="Tightest tolerance this machine can reliably hold")
+                mach_rate = st.number_input("Rate ($/hr)", 0.0, value=85.0, step=5.0, key="mach_rate")
+            with mach3:
+                mach_notes= st.text_area("Notes", placeholder="Year, controller, special fixtures...",
+                                          key="mach_notes", height=80)
+            if st.button("💾 Save Machine", type="primary", key="save_mach"):
+                if mach_name:
+                    try:
+                        save_machine(user["id"], mach_name, mach_type, mach_tol, mach_rate, mach_notes)
+                        st.success(f"Saved {mach_name}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Could not save machine: {e}")
+                else:
+                    st.error("Machine name is required.")
+
+        try:
+            machines = get_machines(user["id"])
+        except Exception:
+            machines = []
+            st.warning("Machines table not set up. Run the SQL migration in Supabase first.")
+
+        if machines:
+            st.markdown(f"**{len(machines)} machine(s) configured**")
+            for m in machines:
+                mm1,mm2,mm3,mm4,mm5 = st.columns([3,2,2,2,1])
+                mm1.markdown(f"**{esc(m.get('name',''))}** <span style='font-size:0.78rem;color:#6b7280;'>{esc(m.get('machine_type',''))}</span>", unsafe_allow_html=True)
+                mm2.markdown(f"<span style='font-size:0.82rem;'>±{m.get('tolerance_mm',0):.4f} mm</span>", unsafe_allow_html=True)
+                mm3.markdown(f"<span style='font-family:monospace;'>${m.get('rate_per_hr',0):.0f}/hr</span>", unsafe_allow_html=True)
+                mm4.markdown(f"<span style='font-size:0.78rem;color:#6b7280;'>{esc(m.get('notes',''))}</span>", unsafe_allow_html=True)
+                with mm5:
+                    if st.button("🗑", key=f"delmach_{m['id']}"):
+                        try:
+                            delete_machine(m["id"], user["id"])
+                            st.rerun()
+                        except Exception:
+                            st.error("Could not delete.")
+        else:
+            st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>No machines yet</h3><p>Add your machines to enable tolerance feasibility checks.</p></div>', unsafe_allow_html=True)
