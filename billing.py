@@ -5,6 +5,10 @@
 billing.py — Stripe integration for DrawingIQ
 Handles: checkout sessions, customer portal, webhook processing, plan upgrades
 """
+"""
+billing.py — Stripe integration for DrawingIQ
+Handles: checkout sessions, customer portal, webhook processing, plan upgrades
+"""
 
 import os
 import stripe
@@ -367,69 +371,85 @@ def render_pricing_page(user_id: str, email: str, current_plan: str):
             highlighted = plan.get("highlighted", False)
             color       = plan.get("color", "#6b7280")
 
-            # Card border
-            border = "3px solid #f97316" if highlighted else "1px solid #e2e8f0"
-            bg     = "white"
-
-            # Build entire card as one HTML block to avoid theme interference
-            popular_html = ""
             if highlighted:
-                popular_html = "<div style='text-align:center;margin-bottom:10px;'><span style='background:#f97316;color:white;font-size:0.68rem;font-weight:700;padding:3px 14px;border-radius:20px;letter-spacing:0.06em;text-transform:uppercase;'>MOST POPULAR</span></div>"
+                st.markdown(
+                    "<div style='text-align:center;margin-bottom:6px;'>"
+                    "<span style='background:#f97316;color:white;font-size:0.68rem;"
+                    "font-weight:700;padding:3px 14px;border-radius:20px;"
+                    "letter-spacing:0.06em;'>MOST POPULAR</span></div>",
+                    unsafe_allow_html=True,
+                )
 
-            features_html = "".join(
-                f"<div style='font-size:0.82rem;color:#374151;margin:4px 0;display:flex;gap:6px;align-items:flex-start;'><span style='color:#16a34a;font-weight:700;flex-shrink:0;'>✓</span><span>{f}</span></div>"
-                for f in plan["features"]
+            # Card container
+            border = "3px solid #f97316" if highlighted else "1px solid #dbeafe"
+            st.markdown(
+                f"<div style='background:white;border:{border};border-radius:12px;"
+                f"padding:1.25rem;min-height:320px;'>",
+                unsafe_allow_html=True,
             )
 
-            border = "3px solid #f97316" if highlighted else "1px solid #e2e8f0"
-            st.markdown(f"""
-            <div style='background:white;border:{border};border-radius:12px;padding:1.25rem;margin-bottom:0.5rem;'>
-                {popular_html}
-                <p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{color};margin:0 0 6px;'>{plan['name']}</p>
-                <p style='font-size:2rem;font-weight:800;color:#0f172a;font-family:monospace;margin:0 0 10px;line-height:1;'>
-                    {plan['price']}<span style='font-size:0.85rem;color:#6b7280;font-weight:400;font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>
-                </p>
-                {features_html}
-            </div>
-            """, unsafe_allow_html=True)
+            # Plan name
+            st.markdown(
+                f"<p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;"
+                f"letter-spacing:0.08em;color:{color};margin:0 0 4px;'>{plan['name']}</p>",
+                unsafe_allow_html=True,
+            )
 
-            with st.container():
-                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            # Price
+            st.markdown(
+                f"<p style='font-size:2rem;font-weight:800;color:#0f172a;"
+                f"font-family:monospace;margin:0 0 10px;line-height:1;'>"
+                f"{plan['price']}"
+                f"<span style='font-size:0.85rem;color:#6b7280;font-weight:400;"
+                f"font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
 
-                # Button
-                if is_current:
-                    st.success("✓ Current plan")
-                elif plan["key"] == "free":
-                    if current_plan != "free":
-                        if st.button("Downgrade", key="btn_free", use_container_width=True):
-                            st.info("To cancel, use Manage Subscription below.")
-                elif plan["key"] == "enterprise":
-                    if st.button("Contact Sales", key="btn_enterprise", use_container_width=True):
-                        st.info("Email sales@drawingiq.com")
-                else:
-                    label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
-                    if st.button(label, key=f"btn_{plan['key']}",
-                                 type="primary", use_container_width=True):
-                        if not stripe_key or "REPLACE_ME" in os.getenv(f"STRIPE_PRICE_{plan['key'].upper()}", "REPLACE_ME"):
-                            st.error("Payment processing is being set up. Check back soon or contact support@drawingiq.com")
-                        else:
-                            try:
-                                url = create_checkout_session(user_id, plan["key"], email)
-                                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                                st.info(f"Redirecting… [Click here if not redirected]({url})")
-                            except ValueError as e:
-                                st.error(str(e))
+            # Features
+            for feat in plan["features"]:
+                st.markdown(
+                    f"<p style='font-size:0.82rem;color:#374151;margin:3px 0;'>"
+                    f"<span style='color:#16a34a;font-weight:700;'>✓</span> {feat}</p>",
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # Button
+            if is_current:
+                st.success("✓ Current plan")
+            elif plan["key"] == "free":
+                if current_plan != "free":
+                    if st.button("Downgrade", key="btn_free", use_container_width=True):
+                        st.info("To cancel, use Manage Subscription below.")
+            elif plan["key"] == "enterprise":
+                if st.button("Contact Sales", key="btn_enterprise", use_container_width=True):
+                    st.info("Email sales@drawingiq.com")
+            else:
+                label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
+                if st.button(label, key=f"btn_{plan['key']}", type="primary", use_container_width=True):
+                    if not stripe_key or "REPLACE_ME" in os.getenv(f"STRIPE_PRICE_{plan['key'].upper()}", "REPLACE_ME"):
+                        st.error("Payment processing coming soon. Contact support@drawingiq.com to upgrade manually.")
+                    else:
+                        try:
+                            url = create_checkout_session(user_id, plan["key"], email)
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                            st.info(f"Redirecting… [Click here if not redirected]({url})")
+                        except ValueError as e:
+                            st.error(str(e))
 
     if current_plan != "free":
         st.markdown("---")
-        if st.button("⚙ Manage Subscription / Cancel", use_container_width=False):
+        if st.button("⚙ Manage Subscription / Cancel"):
             if not stripe_key:
                 st.error("Contact support@drawingiq.com to manage your subscription.")
             else:
                 try:
                     url = create_portal_session(user_id)
                     st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                    st.info(f"Redirecting to billing portal… [Click here]({url})")
+                    st.info(f"Redirecting… [Click here]({url})")
                 except ValueError as e:
                     st.error(str(e))
 
