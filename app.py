@@ -31,6 +31,7 @@ from database import (
     create_workspace, get_user_workspaces, get_workspace_members,
     invite_member, remove_member, get_usage_stats, PLAN_LIMITS, update_profile,
     save_material, get_materials, delete_material,
+    get_effective_limits, is_in_trial,
     save_machine, get_machines, delete_machine,
     save_quote, get_quotes, get_quote_by_token, update_quote_status,
     save_job_actual, get_job_actuals, find_similar_parts,
@@ -124,7 +125,12 @@ if not profile:
     profile = get_current_profile() or {}
 
 plan   = profile.get("plan","free")
-limits = get_plan_limits(plan)
+# Dev account override - always give full access to the owner
+_owner_email = "isaiah.williams2002@outlook.com"
+if profile.get("email","") == _owner_email and plan == "free":
+    plan = "pro"
+    profile["plan"] = "pro"
+limits = get_effective_limits(profile)
 user_name = (user.get("full_name") or profile.get("full_name") or
              profile.get("email","") or user.get("email","")).strip() or "User"
 user_initials = "".join([p[0].upper() for p in user_name.split()[:2]])
@@ -220,10 +226,22 @@ with st.sidebar:
             _cdt   = datetime.fromisoformat(_created.replace("Z","+00:00"))
             _dleft = max(0, 30 - (datetime.now(_tz.utc) - _cdt).days)
             _bpct  = int((30-_dleft)/30*100)
-            _bcol  = "#dc2626" if _dleft<=5 else "#d97706" if _dleft<=10 else "#2563eb"
-            st.markdown(f"<div style=\'font-size:0.78rem;color:#7aa2d4;margin-bottom:3px;\'>Free trial: <strong style=\'color:#e2e8f0;\'>{_dleft} days left</strong></div><div style=\'background:#1e3a5f;border-radius:4px;height:4px;margin-bottom:6px;\'><div style=\'background:{_bcol};border-radius:4px;height:4px;width:{_bpct}%;\''></div></div>", unsafe_allow_html=True)
+            _bcol  = "#dc2626" if _dleft<=5 else "#d97706" if _dleft<=10 else "#3b82f6"
+            st.markdown(
+                f"<div style='font-size:0.78rem;color:#7aa2d4;margin-bottom:3px;'>"
+                f"Free trial: <strong style='color:#e2e8f0;'>{_dleft} days left</strong></div>"
+                f"<div style='background:#1e3a5f;border-radius:4px;height:4px;margin-bottom:6px;'>"
+                f"<div style='background:{_bcol};border-radius:4px;height:4px;width:{_bpct}%;'>"
+                f"</div></div>",
+                unsafe_allow_html=True
+            )
             if _dleft <= 7:
-                st.markdown('<div class="upgrade-banner"><strong>Trial ending soon!</strong>Upgrade to keep access.</div>', unsafe_allow_html=True)
+                st.markdown(
+                    "<div style='background:#dc2626;color:white;border-radius:6px;"
+                    "padding:6px 10px;font-size:0.78rem;text-align:center;margin-top:4px;'>"
+                    "<strong>Trial ending soon!</strong> Upgrade to keep access.</div>",
+                    unsafe_allow_html=True
+                )
         except Exception:
             pass
     st.markdown("---")
@@ -405,7 +423,7 @@ def render_result(result, filename, analysis_id=None):
         st.download_button("⬇ Download Checklist",f'DRAWINGIQ PRE-MACHINING CHECKLIST\nPart: {result.get("part_name","Unknown")} | File: {filename} | {datetime.now().strftime("%Y-%m-%d %H:%M")}\n{"="*60}\n{cl_txt}',file_name=f'{filename.rsplit(".",1)[0]}_checklist.txt',mime="text/plain",use_container_width=True)
 
     with t_quote:
-        if plan == "free":
+        if not limits.get("quote", False):
             st.markdown('<div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;border-radius:10px;padding:2rem;text-align:center;margin:1rem 0;"><div style="font-size:1.5rem;margin-bottom:0.5rem;">💰</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;">Quote Engine — Starter Plan &amp; Above</div><div style="opacity:0.85;font-size:0.88rem;margin-bottom:1rem;">Generate instant job cost estimates, send customer approval links, and download professional quotes. Starting at $50/month.</div></div>', unsafe_allow_html=True)
             if st.button("🚀 Upgrade to Starter — $50/month", type="primary", use_container_width=True, key=f"upg_q_{analysis_id}"):
                 st.session_state["force_page"] = "💳 Billing"; st.rerun()

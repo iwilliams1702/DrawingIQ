@@ -1,10 +1,6 @@
 # Copyright (c) 2026 Isaiah Williams / DrawingIQ
 # All rights reserved. Unauthorized copying, modification,
 # or distribution of this software is strictly prohibited.
-
-
-
-
 """
 billing.py — Stripe integration for DrawingIQ
 Handles: checkout sessions, customer portal, webhook processing, plan upgrades
@@ -20,7 +16,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 PLANS = {
     "starter": {
         "name":           "Starter",
-        "price":          "$29",
+        "price":          "$50",
         "period":         "/ month",
         "stripe_price_id": os.getenv("STRIPE_PRICE_STARTER", "price_REPLACE_ME_STARTER"),
         "color":          "#0369a1",
@@ -37,7 +33,7 @@ PLANS = {
     },
     "pro": {
         "name":           "Pro",
-        "price":          "$99",
+        "price":          "$150",
         "period":         "/ month",
         "stripe_price_id": os.getenv("STRIPE_PRICE_PRO", "price_REPLACE_ME_PRO"),
         "color":          "#d97706",
@@ -458,14 +454,14 @@ def render_pricing_page(user_id: str, email: str, current_plan: str):
 
 def render_usage_bar(used: int, limit: int, plan: str):
     pct       = min(int(used / max(limit, 1) * 100), 100)
-    color_cls = "danger" if pct >= 90 else ""
+    bar_color = "#dc2626" if pct >= 90 else "#d97706" if pct >= 70 else "#3b82f6"
     limit_str = "∞" if limit >= 99999 else str(limit)
-    st.markdown(BILLING_CSS, unsafe_allow_html=True)
-    st.markdown(f"""
-    <div style="font-size:0.8rem;color:#7aa2d4;margin-bottom:4px;">
-        Usage: <strong style="color:#e2e8f0;">{used}</strong> / {limit_str} this month
-    </div>
-    <div class="usage-bar-bg">
-        <div class="usage-bar {color_cls}" style="width:{pct}%;"></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.8rem;color:#7aa2d4;margin-bottom:4px;'>"
+        f"Usage: <strong style='color:#e2e8f0;'>{used}</strong>"
+        f" / <span style='color:#7aa2d4;'>{limit_str}</span> this month</div>"
+        f"<div style='background:#1e3a5f;border-radius:20px;height:6px;margin-bottom:4px;'>"
+        f"<div style='background:{bar_color};border-radius:20px;height:6px;width:{pct}%;'></div>"
+        f"</div>",
+        unsafe_allow_html=True
+    )

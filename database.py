@@ -1,10 +1,6 @@
 # Copyright (c) 2026 Isaiah Williams / DrawingIQ
 # All rights reserved. Unauthorized copying, modification,
 # or distribution of this software is strictly prohibited.
-
-
-
-
 """
 database.py — All Supabase DB operations for DrawingIQ
 Tables managed here:
@@ -238,18 +234,41 @@ def increment_usage(user_id: str):
 # ─── Plan limits ───────────────────────────────────────────────────────────────
 
 PLAN_LIMITS = {
-    "free":       {"analyses_per_month": 5,     "batch_size": 1,  "pdf": False, "team": False, "export": False},
-    "starter":    {"analyses_per_month": 50,    "batch_size": 5,  "pdf": True,  "team": False, "export": True},
-    "pro":        {"analyses_per_month": 300,   "batch_size": 20, "pdf": True,  "team": True,  "export": True},
-    "enterprise": {"analyses_per_month": 99999, "batch_size": 50, "pdf": True,  "team": True,  "export": True},
+    "free":       {"analyses_per_month": 5,     "batch_size": 1,  "pdf": False, "team": False, "export": False, "quote": False},
+    "trial":      {"analyses_per_month": 50,    "batch_size": 5,  "pdf": True,  "team": False, "export": True,  "quote": True},
+    "starter":    {"analyses_per_month": 50,    "batch_size": 5,  "pdf": True,  "team": False, "export": True,  "quote": True},
+    "pro":        {"analyses_per_month": 300,   "batch_size": 20, "pdf": True,  "team": True,  "export": True,  "quote": True},
+    "enterprise": {"analyses_per_month": 99999, "batch_size": 50, "pdf": True,  "team": True,  "export": True,  "quote": True},
 }
 
 def get_plan_limits(plan: str) -> dict:
+    # Check if user is in free trial (account < 30 days old on free plan)
+    return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+def is_in_trial(profile: dict) -> bool:
+    """Returns True if user is within their 30-day free trial."""
+    if profile.get("plan","free") != "free":
+        return False
+    created = profile.get("created_at","")
+    if not created:
+        return True  # No creation date = assume trial
+    try:
+        from datetime import timezone
+        created_dt = datetime.fromisoformat(created.replace("Z","+00:00"))
+        days_used  = (datetime.now(timezone.utc) - created_dt).days
+        return days_used <= 30
+    except Exception:
+        return True
+
+def get_effective_limits(profile: dict) -> dict:
+    """Returns limits based on plan, upgrading free users in trial to trial limits."""
+    plan = profile.get("plan","free")
+    if plan == "free" and is_in_trial(profile):
+        return PLAN_LIMITS["trial"]
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
 
 def can_analyze(profile: dict) -> tuple[bool, str]:
-    plan   = profile.get("plan", "free")
-    limits = get_plan_limits(plan)
+    limits = get_effective_limits(profile)
     used   = profile.get("analyses_this_month", 0)
     cap    = limits["analyses_per_month"]
     if used >= cap:
