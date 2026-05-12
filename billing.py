@@ -5,10 +5,6 @@
 billing.py — Stripe integration for DrawingIQ
 Handles: checkout sessions, customer portal, webhook processing, plan upgrades
 """
-"""
-billing.py — Stripe integration for DrawingIQ
-Handles: checkout sessions, customer portal, webhook processing, plan upgrades
-"""
 
 import os
 import stripe
@@ -370,54 +366,32 @@ def render_pricing_page(user_id: str, email: str, current_plan: str):
             is_current  = plan["key"] == current_plan
             highlighted = plan.get("highlighted", False)
             color       = plan.get("color", "#6b7280")
+            border      = "3px solid #f97316" if highlighted else "1px solid #dbeafe"
 
-            if highlighted:
-                st.markdown(
-                    "<div style='text-align:center;margin-bottom:6px;'>"
-                    "<span style='background:#f97316;color:white;font-size:0.68rem;"
-                    "font-weight:700;padding:3px 14px;border-radius:20px;"
-                    "letter-spacing:0.06em;'>MOST POPULAR</span></div>",
-                    unsafe_allow_html=True,
-                )
+            popular = (
+                "<div style='text-align:center;margin-bottom:8px;'>"
+                "<span style='background:#f97316;color:white;font-size:0.68rem;"
+                "font-weight:700;padding:3px 14px;border-radius:20px;'>MOST POPULAR</span></div>"
+            ) if highlighted else ""
 
-            # Card container
-            border = "3px solid #f97316" if highlighted else "1px solid #dbeafe"
-            st.markdown(
-                f"<div style='background:white;border:{border};border-radius:12px;"
-                f"padding:1.25rem;min-height:320px;'>",
-                unsafe_allow_html=True,
+            feats = "".join(
+                f"<div style='font-size:0.82rem;color:#374151;padding:3px 0;'>"
+                f"<span style='color:#16a34a;font-weight:700;'>✓</span> {f}</div>"
+                for f in plan["features"]
             )
 
-            # Plan name
-            st.markdown(
-                f"<p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;"
-                f"letter-spacing:0.08em;color:{color};margin:0 0 4px;'>{plan['name']}</p>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"""<div style='background:white;border:{border};border-radius:12px;
+padding:1.25rem;'>{popular}
+<div style='font-size:0.78rem;font-weight:700;text-transform:uppercase;
+letter-spacing:0.08em;color:{color};margin-bottom:4px;'>{plan['name']}</div>
+<div style='font-size:2rem;font-weight:800;color:#0f172a;font-family:monospace;
+line-height:1;margin-bottom:10px;'>{plan['price']}
+<span style='font-size:0.85rem;color:#6b7280;font-weight:400;
+font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span></div>
+{feats}</div>""", unsafe_allow_html=True)
 
-            # Price
-            st.markdown(
-                f"<p style='font-size:2rem;font-weight:800;color:#0f172a;"
-                f"font-family:monospace;margin:0 0 10px;line-height:1;'>"
-                f"{plan['price']}"
-                f"<span style='font-size:0.85rem;color:#6b7280;font-weight:400;"
-                f"font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>"
-                f"</p>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-            # Features
-            for feat in plan["features"]:
-                st.markdown(
-                    f"<p style='font-size:0.82rem;color:#374151;margin:3px 0;'>"
-                    f"<span style='color:#16a34a;font-weight:700;'>✓</span> {feat}</p>",
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown("</div>", unsafe_allow_html=True)
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-            # Button
             if is_current:
                 st.success("✓ Current plan")
             elif plan["key"] == "free":
@@ -431,7 +405,7 @@ def render_pricing_page(user_id: str, email: str, current_plan: str):
                 label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
                 if st.button(label, key=f"btn_{plan['key']}", type="primary", use_container_width=True):
                     if not stripe_key or "REPLACE_ME" in os.getenv(f"STRIPE_PRICE_{plan['key'].upper()}", "REPLACE_ME"):
-                        st.error("Payment processing coming soon. Contact support@drawingiq.com to upgrade manually.")
+                        st.error("Payment processing coming soon. Contact support@drawingiq.com to upgrade.")
                     else:
                         try:
                             url = create_checkout_session(user_id, plan["key"], email)
