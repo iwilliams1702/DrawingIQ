@@ -414,6 +414,191 @@ def render_result(result, filename, analysis_id=None):
             st.markdown("---\n**Referenced Parts**")
             for p in related: st.markdown(f"• `{esc(p)}`")
 
+
+    with t_verify:
+        st.markdown("### ✏️ Verify & Schedule")
+        st.caption("Review every AI-extracted value, correct anything wrong, assign to a machine, and schedule the job.")
+        st.markdown("---")
+
+        _aid = str(analysis_id or filename or "draft").replace(" ","_")
+        vkey = f"vs_{_aid}"
+
+        if vkey not in st.session_state:
+            st.session_state[vkey] = {
+                "dims":         {i: {"value": d.get("value",""), "tolerance": d.get("tolerance","") or "", "confirmed": False} for i,d in enumerate(dims)},
+                "part_name":    result.get("part_name") or "",
+                "part_number":  result.get("part_number") or "",
+                "revision":     result.get("revision") or "",
+                "material":     result.get("material") or "",
+                "surface_finish": result.get("surface_finish") or "",
+                "machine": "", "operator": "", "due_date": "",
+                "job_number": "", "priority": "Normal",
+                "status": "Pending", "notes": "", "verified": False,
+            }
+        vs = st.session_state[vkey]
+
+        st.markdown("#### Step 1 — Verify Drawing Info")
+        vf1,vf2,vf3 = st.columns(3)
+        with vf1:
+            vs["part_name"]     = st.text_input("Part Name",    value=vs["part_name"],     key=f"vf_pn_{vkey}",  placeholder="Enter part name")
+            vs["material"]      = st.text_input("Material",     value=vs["material"],      key=f"vf_mat_{vkey}", placeholder="e.g. 6061-T6 Aluminum")
+        with vf2:
+            vs["part_number"]   = st.text_input("Part Number",  value=vs["part_number"],   key=f"vf_pno_{vkey}", placeholder="e.g. PN-001")
+            vs["surface_finish"]= st.text_input("Surface Finish",value=vs["surface_finish"],key=f"vf_sf_{vkey}",  placeholder="e.g. 125 Ra")
+        with vf3:
+            vs["revision"]      = st.text_input("Revision",     value=vs["revision"],      key=f"vf_rev_{vkey}", placeholder="e.g. Rev A")
+
+        st.markdown("---")
+        st.markdown("#### Step 2 — Verify Dimensions")
+
+        if dims:
+            hc1,hc2,hc3,hc4,hc5 = st.columns([3,2,2,1,1])
+            for h,t in zip([hc1,hc2,hc3,hc4,hc5],["Feature","Value","Tolerance","Unit","✓ OK"]):
+                h.markdown(f"<span style='font-size:0.72rem;color:#6b7280;text-transform:uppercase;font-weight:600;'>{t}</span>", unsafe_allow_html=True)
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+            for i,d in enumerate(dims):
+                dc1,dc2,dc3,dc4,dc5 = st.columns([3,2,2,1,1])
+                is_crit = d.get("is_critical",False)
+                with dc1:
+                    label_color = "#dc2626" if is_crit else "#374151"
+                    st.markdown(f"<div style='padding:8px 0;font-size:0.85rem;color:{label_color};font-weight:{'600' if is_crit else '400'};'>{'🔴 ' if is_crit else ''}{esc(d.get('feature',''))}</div>", unsafe_allow_html=True)
+                with dc2:
+                    vs["dims"][i]["value"] = st.text_input("v", value=vs["dims"][i]["value"], key=f"vd_v_{vkey}_{i}", label_visibility="collapsed")
+                with dc3:
+                    vs["dims"][i]["tolerance"] = st.text_input("t", value=vs["dims"][i]["tolerance"], key=f"vd_t_{vkey}_{i}", label_visibility="collapsed", placeholder="N/A")
+                with dc4:
+                    st.markdown(f"<div style='padding:8px 0;font-size:0.82rem;color:#6b7280;'>{esc(d.get('unit',''))}</div>", unsafe_allow_html=True)
+                with dc5:
+                    vs["dims"][i]["confirmed"] = st.checkbox("", value=vs["dims"][i]["confirmed"], key=f"vd_c_{vkey}_{i}", label_visibility="collapsed")
+
+            confirmed_n = sum(1 for d in vs["dims"].values() if d["confirmed"])
+            total_n     = len(dims)
+            pct_n       = int(confirmed_n/max(total_n,1)*100)
+            bar_color   = "#16a34a" if pct_n==100 else "#2563eb"
+            st.markdown(f"""
+            <div style='background:#f8faff;border-radius:8px;padding:0.75rem 1rem;margin-top:0.5rem;display:flex;align-items:center;gap:1rem;'>
+                <div style='flex:1;background:#e2e8f0;border-radius:4px;height:8px;'>
+                    <div style='background:{bar_color};border-radius:4px;height:8px;width:{pct_n}%;'></div>
+                </div>
+                <span style='font-size:0.82rem;color:#374151;font-weight:500;white-space:nowrap;'>{confirmed_n}/{total_n} confirmed</span>
+            </div>""", unsafe_allow_html=True)
+
+            if st.button("✓ Confirm All Dimensions", key=f"conf_all_{vkey}"):
+                for i in vs["dims"]:
+                    vs["dims"][i]["confirmed"] = True
+                st.rerun()
+        else:
+            st.info("No dimensions extracted. You can still assign this job below.")
+
+        st.markdown("---")
+        st.markdown("#### Step 3 — Assign to Machine & Schedule")
+
+        try:
+            machines_vs = get_machines(user["id"])
+        except Exception:
+            machines_vs = []
+
+        sa1,sa2,sa3 = st.columns(3)
+        with sa1:
+            if machines_vs:
+                mach_opts = ["-- Select Machine --"] + [m["name"] for m in machines_vs]
+                sel_m = st.selectbox("Machine / Cell", mach_opts, key=f"vs_mach_{vkey}")
+                vs["machine"] = "" if sel_m == "-- Select Machine --" else sel_m
+            else:
+                vs["machine"]   = st.text_input("Machine / Cell", value=vs["machine"], key=f"vs_mach_t_{vkey}", placeholder="Add machines in Shop Setup")
+            vs["operator"]      = st.text_input("Operator",       value=vs["operator"], key=f"vs_op_{vkey}",   placeholder="Machinist name")
+        with sa2:
+            vs["job_number"]    = st.text_input("Job / WO #",     value=vs["job_number"], key=f"vs_job_{vkey}", placeholder="WO-2026-001")
+            vs["due_date"]      = str(st.date_input("Due Date",   key=f"vs_due_{vkey}"))
+        with sa3:
+            vs["priority"]      = st.selectbox("Priority", ["Normal","Rush","Emergency","Low"],   key=f"vs_pri_{vkey}")
+            vs["status"]        = st.selectbox("Status",   ["Pending","In Progress","On Hold","Complete"], key=f"vs_stat_{vkey}")
+
+        vs["notes"] = st.text_area("Setup Notes", value=vs["notes"], key=f"vs_notes_{vkey}", placeholder="Special fixturing, customer requirements, known issues...", height=80)
+
+        st.markdown("---")
+        st.markdown("#### Step 4 — Sign Off & Save")
+
+        confirmed_c  = sum(1 for d in vs["dims"].values() if d["confirmed"]) if dims else 0
+        total_c      = len(dims)
+        has_machine  = bool(vs.get("machine",""))
+        has_material = bool(vs.get("material",""))
+        r_score      = 0
+        r_items      = []
+
+        if total_c > 0 and confirmed_c == total_c: r_score+=40; r_items.append(("✅",f"All {total_c} dimensions confirmed"))
+        elif total_c > 0: r_items.append(("⚠️",f"{confirmed_c}/{total_c} dimensions confirmed"))
+        if has_material:  r_score+=20; r_items.append(("✅",f"Material: {vs['material']}"))
+        else:             r_items.append(("❌","Material not specified"))
+        if has_machine:   r_score+=20; r_items.append(("✅",f"Assigned to: {vs['machine']}"))
+        else:             r_items.append(("⚠️","No machine assigned"))
+        if vs.get("operator"):   r_score+=10; r_items.append(("✅",f"Operator: {vs['operator']}"))
+        else:             r_items.append(("⚠️","No operator assigned"))
+        if vs.get("job_number"): r_score+=10; r_items.append(("✅",f"Job #: {vs['job_number']}"))
+        else:             r_items.append(("⚠️","No job number"))
+
+        sc_color = "#16a34a" if r_score>=80 else "#d97706" if r_score>=50 else "#dc2626"
+        items_html = "".join(f'<div style="font-size:0.83rem;padding:2px 0;">{icon} {esc(item)}</div>' for icon,item in r_items)
+        st.markdown(f"""
+        <div style='background:white;border:1px solid #dbeafe;border-radius:10px;padding:1rem 1.25rem;'>
+            <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;'>
+                <span style='font-weight:600;color:#0f172a;'>Job Readiness</span>
+                <span style='font-size:1.5rem;font-weight:800;font-family:monospace;color:{sc_color};'>{r_score}%</span>
+            </div>
+            <div style='background:#f1f5f9;border-radius:4px;height:10px;margin-bottom:0.75rem;'>
+                <div style='background:{sc_color};border-radius:4px;height:10px;width:{r_score}%;'></div>
+            </div>
+            {items_html}
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+        btn1,btn2 = st.columns([2,1])
+        with btn1:
+            if st.button("✅ Mark as Verified & Ready to Machine", type="primary", use_container_width=True, key=f"vs_verify_{vkey}"):
+                vs["verified"]    = True
+                vs["verified_by"] = user_name
+                vs["verified_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                st.session_state[vkey] = vs
+                st.success(f"✅ Verified by {user_name} at {vs['verified_at']}. Job traveler updated.")
+                st.balloons()
+        with btn2:
+            if vs.get("verified"):
+                st.markdown(f"""
+                <div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:0.6rem 0.9rem;text-align:center;'>
+                    <div style='color:#16a34a;font-weight:700;font-size:0.85rem;'>✅ VERIFIED</div>
+                    <div style='color:#6b7280;font-size:0.72rem;margin-top:2px;'>{esc(vs.get("verified_at",""))}</div>
+                    <div style='color:#6b7280;font-size:0.72rem;'>{esc(vs.get("verified_by",""))}</div>
+                </div>""", unsafe_allow_html=True)
+
+        if vs.get("verified"):
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            if st.button("💾 Save to Production Queue", key=f"vs_save_{vkey}", use_container_width=True):
+                if "job_queue" not in st.session_state:
+                    st.session_state["job_queue"] = []
+                job_entry = {
+                    "id": vkey, "filename": filename,
+                    "part_name":   vs["part_name"]   or result.get("part_name","Unknown"),
+                    "part_number": vs["part_number"],
+                    "material":    vs["material"],
+                    "machine":     vs["machine"],
+                    "operator":    vs["operator"],
+                    "job_number":  vs["job_number"],
+                    "due_date":    vs["due_date"],
+                    "priority":    vs["priority"],
+                    "status":      vs["status"],
+                    "notes":       vs["notes"],
+                    "verified_by": vs.get("verified_by",""),
+                    "verified_at": vs.get("verified_at",""),
+                    "complexity":  result.get("estimated_complexity","Unknown"),
+                    "added_at":    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                }
+                existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
+                existing.append(job_entry)
+                st.session_state["job_queue"] = existing
+                st.success("✅ Job saved to production queue! View it on the Dashboard.")
+
+
     with t_print:
         st.markdown("**🖨 Job Traveler / Setup Sheet**")
         pt1,pt2 = st.columns(2)
@@ -424,7 +609,7 @@ def render_result(result, filename, analysis_id=None):
             job_number = st.text_input("Job / Work Order #",key=f"pt_job_{analysis_id}")
             due_date_p = st.text_input("Due Date",key=f"pt_due_{analysis_id}")
         # Pull verified data if available
-        verify_key_p = f"verify_{analysis_id or filename}"
+        verify_key_p = f"verify_{analysis_id or filename or 'draft'}"
         vs_p = st.session_state.get(verify_key_p, {})
         verified_stamp = ""
         if vs_p.get("verified"):
