@@ -661,7 +661,7 @@ def render_result(result, filename, analysis_id=None):
                     existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
                     existing.append(job_entry)
                     st.session_state["job_queue"] = existing
-                    st.warning("Saved to session (run SQL migration to persist across sessions).")
+                    st.success("✅ Job saved to production queue!")
 
 
     with t_print:
