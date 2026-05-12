@@ -300,11 +300,16 @@ def _render_signup():
                               type="password")
     confirm   = st.text_input("Confirm Password",    key="su_confirm", type="password")
 
+    tos_agreed = st.checkbox("I agree to the Terms of Service and Privacy Policy", key="su_tos")
+    st.caption("By signing up you agree to our terms. 30-day free trial, then $50/month. Cancel anytime.")
+
     if st.button("Create Account", type="primary", use_container_width=True):
         if not all([full_name, email, password, confirm]):
             st.error("Please fill in all required fields.")
         elif password != confirm:
             st.error("Passwords don't match.")
+        elif not tos_agreed:
+            st.error("Please agree to the Terms of Service to continue.")
         else:
             with st.spinner("Creating account…"):
                 ok, msg = signup(email, password, full_name, company)
@@ -336,3 +341,202 @@ def _render_reset():
     if st.button("← Back to Sign In", use_container_width=True):
         st.session_state.auth_view = "login"
         st.rerun()
+
+
+# ── Terms of Service ──────────────────────────────────────────────────────────
+TERMS_URL    = "https://app.termly.io/policy-viewer/policy.html?policyUUID=YOUR_TERMS_UUID"
+PRIVACY_URL  = "https://app.termly.io/policy-viewer/policy.html?policyUUID=YOUR_PRIVACY_UUID"
+
+TERMS_TEXT = """
+DRAWINGIQ TERMS OF SERVICE
+Last updated: May 2026
+
+By using DrawingIQ you agree to these terms.
+
+1. SERVICE: DrawingIQ provides AI-powered engineering drawing analysis tools.
+2. ACCURACY: AI analysis is provided as a reference tool only. Always verify results before machining.
+3. LIABILITY: DrawingIQ is not liable for manufacturing errors, scrapped parts, or production losses.
+4. PAYMENT: Subscriptions are billed monthly. Cancel anytime. No refunds for partial months.
+5. DATA: Your drawings and analyses are stored securely. We never share your data with third parties.
+6. COPYRIGHT: Your drawings remain your property. You grant DrawingIQ a license to process them.
+7. PROHIBITED: Do not use DrawingIQ for illegal purposes or to infringe on third-party IP.
+8. CONTACT: support@drawingiq.com
+
+PRIVACY POLICY SUMMARY:
+- We collect: email, company name, uploaded drawings, analysis results
+- We use it for: providing the service, improving accuracy
+- We never: sell your data, share with advertisers, store credit card numbers
+- You can: delete your account and all data at any time
+"""
+
+LANDING_CSS = """
+<style>
+.landing-wrap {
+    min-height: 100vh;
+    background: #020d1f;
+    background-image: linear-gradient(rgba(0,80,200,0.06) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0,80,200,0.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding: 0;
+}
+.hero {
+    text-align: center;
+    padding: 4rem 2rem 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.hero-badge {
+    display: inline-block;
+    background: rgba(37,99,235,0.2);
+    color: #60a5fa;
+    border: 1px solid rgba(37,99,235,0.3);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 20px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+}
+.hero h1 {
+    font-size: 3rem;
+    font-weight: 800;
+    color: white;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+    letter-spacing: -0.03em;
+}
+.hero h1 span { color: #3b82f6; }
+.hero p {
+    font-size: 1.15rem;
+    color: #7aa2d4;
+    line-height: 1.7;
+    margin-bottom: 2rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+.feature-card {
+    background: rgba(5,20,50,0.6);
+    border: 1px solid rgba(30,100,255,0.2);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: left;
+}
+.feature-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+.feature-title { color: #e2e8f0; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; }
+.feature-desc  { color: #4a6fa5; font-size: 0.8rem; line-height: 1.5; }
+.social-proof {
+    background: rgba(5,20,50,0.4);
+    border-top: 1px solid rgba(30,100,255,0.15);
+    padding: 1.5rem;
+    text-align: center;
+    color: #4a6fa5;
+    font-size: 0.82rem;
+}
+</style>
+"""
+
+def render_landing_page():
+    """Render marketing landing page for logged-out users."""
+    st.markdown(AUTH_CSS, unsafe_allow_html=True)
+    st.markdown(LANDING_CSS, unsafe_allow_html=True)
+
+    # Hero section
+    st.markdown('''
+    <div class="hero">
+        <div class="hero-badge">⚙ Machine Shop Intelligence</div>
+        <h1>Read any drawing.<br><span>Quote any job.</span><br>In 60 seconds.</h1>
+        <p>DrawingIQ uses AI to analyze engineering drawings, extract every dimension and tolerance,
+           flag issues before you machine, and generate professional quotes automatically.
+           Built specifically for machine shops.</p>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # Feature grid
+    st.markdown('''
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="feature-icon">📐</div>
+            <div class="feature-title">Instant Drawing Analysis</div>
+            <div class="feature-desc">Upload any engineering drawing. Get every dimension, tolerance, flag, and machinist note extracted in seconds.</div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">💰</div>
+            <div class="feature-title">Automatic Job Quoting</div>
+            <div class="feature-desc">Enter your shop rates once. Get instant line-item quotes with machine cost, labor, material, overhead, and profit.</div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">✅</div>
+            <div class="feature-title">Pre-Machining Checklist</div>
+            <div class="feature-desc">13-point readiness check before every job. Catch missing material callouts, tolerances, and title blocks automatically.</div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🔬</div>
+            <div class="feature-title">FAI Reports</div>
+            <div class="feature-desc">Enter actual measurements after machining. Auto-generate First Article Inspection reports. Required for aerospace and defense.</div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🏭</div>
+            <div class="feature-title">Production Scheduling</div>
+            <div class="feature-desc">Assign verified jobs to machines. Track status from Pending to Complete. See your full shop queue in one place.</div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">📈</div>
+            <div class="feature-title">Job Cost Tracking</div>
+            <div class="feature-desc">Log actual vs estimated costs after every job. Learn which jobs are profitable and improve future quotes automatically.</div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # Pricing teaser
+    st.markdown('''
+    <div style="text-align:center;padding:1.5rem;color:#4a6fa5;font-size:0.88rem;">
+        <strong style="color:#60a5fa;">Free trial — no credit card required.</strong>
+        Then $50/month Starter or $150/month Pro.
+        Cancel anytime.
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # Auth form
+    st.markdown('<div style="max-width:440px;margin:0 auto;">', unsafe_allow_html=True)
+    view = st.session_state.get("auth_view","login")
+    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+    st.markdown('''
+    <div class="auth-logo">
+        <div class="auth-logo-icon">⚙</div>
+        <h1>Drawing<span>IQ</span></h1>
+        <div class="tagline">Blueprints <span>·</span> Precision <span>·</span> Production</div>
+    </div>
+    ''', unsafe_allow_html=True)
+    if view == "login":
+        _render_login()
+    elif view == "signup":
+        _render_signup()
+    elif view == "reset":
+        _render_reset()
+    st.markdown('</div></div>', unsafe_allow_html=True)
+
+    # Footer
+    st.markdown('''
+    <div class="social-proof">
+        <div style="margin-bottom:0.5rem;">
+            Built for machine shops · Saves 2+ hours per job · Zero hallucinations guaranteed
+        </div>
+        <div>
+            <a href="mailto:support@drawingiq.com" style="color:#4a6fa5;margin:0 0.5rem;">support@drawingiq.com</a>
+            ·
+            <a href="#" onclick="window.open('about:blank')" style="color:#4a6fa5;margin:0 0.5rem;">Terms of Service</a>
+            ·
+            <a href="#" style="color:#4a6fa5;margin:0 0.5rem;">Privacy Policy</a>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)

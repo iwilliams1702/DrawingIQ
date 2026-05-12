@@ -3,6 +3,11 @@ analyzer.py — Core AI analysis engine for DrawingIQ
 Zero-hallucination prompting, strict grounding, quote estimation, and extended feature set.
 """
 
+"""
+analyzer.py — Core AI analysis engine for DrawingIQ
+Zero-hallucination prompting, strict grounding, quote estimation, and extended feature set.
+"""
+
 import json
 import os
 from openai import OpenAI

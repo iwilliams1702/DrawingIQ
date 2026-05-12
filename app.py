@@ -28,7 +28,7 @@ st.set_page_config(page_title="DrawingIQ", page_icon="⚙", layout="wide",
                    initial_sidebar_state="expanded")
 
 from auth import (init_session, is_logged_in, get_current_user,
-                  get_current_profile, logout, render_auth_page, refresh_profile)
+                  get_current_profile, logout, render_auth_page, render_landing_page, refresh_profile)
 from database import (
     get_profile, save_analysis, get_analyses, get_analysis_by_id,
     delete_analysis, get_plan_limits, can_analyze,
@@ -117,7 +117,7 @@ button[kind="primary"]{background:linear-gradient(135deg,#1d4ed8,#2563eb)!import
 """, unsafe_allow_html=True)
 
 if not is_logged_in():
-    render_auth_page()
+    render_landing_page()
     st.stop()
 
 user    = get_current_user()
@@ -152,6 +152,46 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ── Onboarding for new users ─────────────────────────────────────────────────
+_analyses_total = profile.get("analyses_total", 0)
+_has_machines   = False
+_has_materials  = False
+try:
+    _has_machines  = len(get_machines(user["id"])) > 0
+    _has_materials = len(get_materials(user["id"])) > 0
+except Exception:
+    pass
+
+_onboarding_done = st.session_state.get("onboarding_dismissed", False)
+_show_onboarding = (not _onboarding_done and _analyses_total == 0
+                    and not _has_machines and not _has_materials)
+
+if _show_onboarding:
+    with st.expander("👋 Welcome to DrawingIQ — Get started in 4 steps", expanded=True):
+        oc1,oc2,oc3,oc4 = st.columns(4)
+        steps = [
+            ("⚙","Add your machines","Go to Shop Setup → Machine Profiles. Add your CNC machines and their tolerance capabilities.",_has_machines),
+            ("🧱","Add your materials","Go to Shop Setup → Material Library. Add your common materials and prices for auto-quoting.",_has_materials),
+            ("📐","Analyze your first drawing","Go to Analyze, upload any engineering drawing, and run your first analysis.",_analyses_total>0),
+            ("💰","Generate your first quote","After analyzing a drawing, go to the Quote tab and run a cost estimate.",False),
+        ]
+        for col,(icon,title,desc,done) in zip([oc1,oc2,oc3,oc4], steps):
+            with col:
+                status_color = "#16a34a" if done else "#2563eb"
+                status_icon  = "✅" if done else "○"
+                st.markdown(f"""
+                <div style='background:{"#f0fdf4" if done else "white"};border:1px solid {"#86efac" if done else "#dbeafe"};
+                            border-radius:10px;padding:1rem;text-align:center;height:150px;'>
+                    <div style='font-size:1.5rem;'>{icon}</div>
+                    <div style='font-size:0.82rem;font-weight:600;color:#0f172a;margin:6px 0 4px;'>{title}</div>
+                    <div style='font-size:0.75rem;color:#6b7280;line-height:1.4;'>{desc}</div>
+                    <div style='margin-top:6px;font-size:0.85rem;color:{status_color};font-weight:700;'>{status_icon}</div>
+                </div>""", unsafe_allow_html=True)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("✕ Dismiss — I know what I'm doing", use_container_width=True):
+            st.session_state["onboarding_dismissed"] = True
+            st.rerun()
+
 with st.sidebar:
     st.markdown("### ⚙ DrawingIQ")
     st.markdown("---")
@@ -170,10 +210,25 @@ with st.sidebar:
             ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
         workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()))]
         st.markdown("---")
-    NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup","👥 Team","💳 Billing","⚙ Account"]
+    NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup","👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
     _forced    = st.session_state.pop("force_page", None)
     _nav_index = NAV.index(_forced) if _forced in NAV else 0
     page = st.radio("Navigate", NAV, index=_nav_index, label_visibility="collapsed")
+    st.markdown("---")
+    # Trial countdown
+    _created = profile.get("created_at","")
+    if _created and plan == "free":
+        try:
+            from datetime import timezone as _tz
+            _cdt   = datetime.fromisoformat(_created.replace("Z","+00:00"))
+            _dleft = max(0, 30 - (datetime.now(_tz.utc) - _cdt).days)
+            _bpct  = int((30-_dleft)/30*100)
+            _bcol  = "#dc2626" if _dleft<=5 else "#d97706" if _dleft<=10 else "#2563eb"
+            st.markdown(f"<div style=\'font-size:0.78rem;color:#7aa2d4;margin-bottom:3px;\'>Free trial: <strong style=\'color:#e2e8f0;\'>{_dleft} days left</strong></div><div style=\'background:#1e3a5f;border-radius:4px;height:4px;margin-bottom:6px;\'><div style=\'background:{_bcol};border-radius:4px;height:4px;width:{_bpct}%;\''></div></div>", unsafe_allow_html=True)
+            if _dleft <= 7:
+                st.markdown('<div class="upgrade-banner"><strong>Trial ending soon!</strong>Upgrade to keep access.</div>', unsafe_allow_html=True)
+        except Exception:
+            pass
     st.markdown("---")
     if st.button("Sign Out", use_container_width=True):
         logout()
@@ -353,48 +408,54 @@ def render_result(result, filename, analysis_id=None):
         st.download_button("⬇ Download Checklist",f'DRAWINGIQ PRE-MACHINING CHECKLIST\nPart: {result.get("part_name","Unknown")} | File: {filename} | {datetime.now().strftime("%Y-%m-%d %H:%M")}\n{"="*60}\n{cl_txt}',file_name=f'{filename.rsplit(".",1)[0]}_checklist.txt',mime="text/plain",use_container_width=True)
 
     with t_quote:
-        st.markdown("### 💰 Job Cost Estimator")
-        qr1,qr2,qr3 = st.columns(3)
-        with qr1:
-            machine_rate = st.number_input("Machine Rate ($/hr)",0.0,value=85.0,step=5.0,key=f"qmr_{analysis_id}")
-            labor_rate   = st.number_input("Labor Rate ($/hr)",0.0,value=65.0,step=5.0,key=f"qlr_{analysis_id}")
-            setup_cost   = st.number_input("Fixed Setup Cost ($)",0.0,value=50.0,step=10.0,key=f"qsc_{analysis_id}")
-        with qr2:
-            mat_cost_kg  = st.number_input("Material Cost ($/kg)",0.0,value=5.0,step=0.5,key=f"qmc_{analysis_id}")
-            mat_density  = st.number_input("Material Density (kg/m³)",100.0,value=2700.0,step=100.0,key=f"qmd_{analysis_id}",help="Al=2700 · Steel=7850 · SS=8000 · Ti=4500")
-            quantity     = st.number_input("Quantity",1,value=1,step=1,key=f"qqty_{analysis_id}")
-        with qr3:
-            overhead_pct = st.number_input("Overhead (%)",0.0,value=15.0,step=1.0,key=f"qoh_{analysis_id}")
-            profit_pct   = st.number_input("Profit Margin (%)",0.0,value=20.0,step=1.0,key=f"qpm_{analysis_id}")
-            rush_mult    = st.number_input("Rush Multiplier",1.0,value=1.0,step=0.1,key=f"qrm_{analysis_id}",help="1.0=standard · 1.5=rush · 2.0=emergency")
-        qi1,qi2 = st.columns(2)
-        with qi1:
-            cust_name  = st.text_input("Customer Name",placeholder="Acme Corp",key=f"qcn_{analysis_id}")
-            cust_email = st.text_input("Customer Email",placeholder="buyer@acme.com",key=f"qce_{analysis_id}")
-        with qi2:
-            quote_num  = st.text_input("Quote Number",placeholder="Q-2026-001",key=f"qqn_{analysis_id}")
-            due_date   = st.text_input("Delivery Date",placeholder="2026-06-15",key=f"qdd_{analysis_id}")
-        if st.button("⚙ Calculate Estimate",type="primary",key=f"qcalc_{analysis_id}",use_container_width=True):
-            shop_rates = {"machine_rate_per_hr":machine_rate,"labor_rate_per_hr":labor_rate,"material_cost_per_kg":mat_cost_kg,"material_density_kg_m3":mat_density,"overhead_pct":overhead_pct,"profit_margin_pct":profit_pct,"setup_cost":setup_cost,"quantity":int(quantity)}
-            q = estimate_quote(result,shop_rates)
-            if rush_mult > 1.0:
-                q["total_job_cost"] = round(q["total_job_cost"]*rush_mult,2)
-                q["price_per_part"] = round(q["price_per_part"]*rush_mult,2)
-            st.session_state[f"quote_{analysis_id}"]      = q
-            st.session_state[f"quote_meta_{analysis_id}"] = {"customer_name":cust_name,"customer_email":cust_email,"quote_number":quote_num,"due_date":due_date}
-        if f"quote_{analysis_id}" in st.session_state:
-            q    = st.session_state[f"quote_{analysis_id}"]
-            meta = st.session_state.get(f"quote_meta_{analysis_id}",{})
-            st.markdown(f'<div class="quote-total"><div class="q-label">Price Per Part</div><div class="q-price">${q["price_per_part"]:,.2f}</div><div style="margin-top:0.5rem;opacity:0.8;font-size:0.85rem;">Total Job ({q["quantity"]} pcs): <strong>${q["total_job_cost"]:,.2f}</strong></div></div>', unsafe_allow_html=True)
-            st.markdown('<div class="result-card">', unsafe_allow_html=True)
-            for lbl,val,note in [("Machine Cost",f'${q["machine_cost"]:,.2f}',f'{q["machine_hours_per_part"]} hr/part'),("Labor Cost",f'${q["labor_cost"]:,.2f}',f'{q["labor_hours_per_part"]} hr/part'),("Material Cost",f'${q["material_cost"]:,.2f}',q["material_note"]),("Setup Cost",f'${q["setup_cost"]:,.2f}',""),("Overhead",f'${q["overhead_amount"]:,.2f}',""),("Profit",f'${q["profit_amount"]:,.2f}',"")]:
-                note_html = f' <span style="color:#9ca3af;font-size:0.78rem;">{esc(note)}</span>' if note else ""
-                st.markdown(f'<div class="quote-row"><span class="qr-label">{lbl}</span><span class="qr-value">{val}{note_html}</span></div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.caption(f"⚠️ {q['disclaimer']}")
-            now_q = datetime.now().strftime("%Y-%m-%d")
-            qlines = ["="*62,"              SHOP QUOTE — DrawingIQ","="*62,f'Quote #:        {meta.get("quote_number") or "N/A"}',f'Date:           {now_q}',f'Delivery:       {meta.get("due_date") or "TBD"}',"-"*62,f'Customer:       {meta.get("customer_name") or "N/A"}',f'Email:          {meta.get("customer_email") or "N/A"}',"-"*62,f'Part:           {result.get("part_name") or "Unknown"}',f'Part Number:    {result.get("part_number") or "Unknown"}',f'Revision:       {result.get("revision") or "Unknown"}',f'Material:       {result.get("material") or "Unknown"}',f'Drawing File:   {filename}',"-"*62,f'Quantity:       {q["quantity"]} pcs',f'Complexity:     {q["complexity"]}',f'Machine Hrs:    {q["machine_hours_per_part"]} hr/part',f'Labor Hrs:      {q["labor_hours_per_part"]} hr/part',"-"*62,f'Machine Cost:   ${q["machine_cost"]:,.2f}',f'Labor Cost:     ${q["labor_cost"]:,.2f}',f'Material Cost:  ${q["material_cost"]:,.2f}',f'Setup Cost:     ${q["setup_cost"]:,.2f}',f'Overhead:       ${q["overhead_amount"]:,.2f}',f'Profit:         ${q["profit_amount"]:,.2f}',"="*62,f'PRICE PER PART: ${q["price_per_part"]:,.2f}',f'TOTAL JOB:      ${q["total_job_cost"]:,.2f}',"="*62,"",q["disclaimer"]]
-            st.download_button("⬇ Download Quote (.txt)","\n".join(qlines),file_name=f'quote_{meta.get("quote_number") or "estimate"}.txt',mime="text/plain",use_container_width=True)
+        if plan == "free":
+            st.markdown('<div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;border-radius:10px;padding:2rem;text-align:center;margin:1rem 0;"><div style="font-size:1.5rem;margin-bottom:0.5rem;">💰</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;">Quote Engine — Starter Plan &amp; Above</div><div style="opacity:0.85;font-size:0.88rem;margin-bottom:1rem;">Generate instant job cost estimates, send customer approval links, and download professional quotes. Starting at $50/month.</div></div>', unsafe_allow_html=True)
+            if st.button("🚀 Upgrade to Starter — $50/month", type="primary", use_container_width=True, key=f"upg_q_{analysis_id}"):
+                st.session_state["force_page"] = "💳 Billing"; st.rerun()
+        else:
+            st.markdown("### 💰 Job Cost Estimator")
+            st.caption("Enter your shop rates.")
+            qr1,qr2,qr3 = st.columns(3)
+            with qr1:
+                machine_rate = st.number_input("Machine Rate ($/hr)",0.0,value=85.0,step=5.0,key=f"qmr_{analysis_id}")
+                labor_rate   = st.number_input("Labor Rate ($/hr)",0.0,value=65.0,step=5.0,key=f"qlr_{analysis_id}")
+                setup_cost   = st.number_input("Fixed Setup Cost ($)",0.0,value=50.0,step=10.0,key=f"qsc_{analysis_id}")
+            with qr2:
+                mat_cost_kg  = st.number_input("Material Cost ($/kg)",0.0,value=5.0,step=0.5,key=f"qmc_{analysis_id}")
+                mat_density  = st.number_input("Material Density (kg/m³)",100.0,value=2700.0,step=100.0,key=f"qmd_{analysis_id}",help="Al=2700 · Steel=7850 · SS=8000 · Ti=4500")
+                quantity     = st.number_input("Quantity",1,value=1,step=1,key=f"qqty_{analysis_id}")
+            with qr3:
+                overhead_pct = st.number_input("Overhead (%)",0.0,value=15.0,step=1.0,key=f"qoh_{analysis_id}")
+                profit_pct   = st.number_input("Profit Margin (%)",0.0,value=20.0,step=1.0,key=f"qpm_{analysis_id}")
+                rush_mult    = st.number_input("Rush Multiplier",1.0,value=1.0,step=0.1,key=f"qrm_{analysis_id}",help="1.0=standard · 1.5=rush · 2.0=emergency")
+            qi1,qi2 = st.columns(2)
+            with qi1:
+                cust_name  = st.text_input("Customer Name",placeholder="Acme Corp",key=f"qcn_{analysis_id}")
+                cust_email = st.text_input("Customer Email",placeholder="buyer@acme.com",key=f"qce_{analysis_id}")
+            with qi2:
+                quote_num  = st.text_input("Quote Number",placeholder="Q-2026-001",key=f"qqn_{analysis_id}")
+                due_date   = st.text_input("Delivery Date",placeholder="2026-06-15",key=f"qdd_{analysis_id}")
+            if st.button("⚙ Calculate Estimate",type="primary",key=f"qcalc_{analysis_id}",use_container_width=True):
+                shop_rates = {"machine_rate_per_hr":machine_rate,"labor_rate_per_hr":labor_rate,"material_cost_per_kg":mat_cost_kg,"material_density_kg_m3":mat_density,"overhead_pct":overhead_pct,"profit_margin_pct":profit_pct,"setup_cost":setup_cost,"quantity":int(quantity)}
+                q = estimate_quote(result,shop_rates)
+                if rush_mult > 1.0:
+                    q["total_job_cost"] = round(q["total_job_cost"]*rush_mult,2)
+                    q["price_per_part"] = round(q["price_per_part"]*rush_mult,2)
+                st.session_state[f"quote_{analysis_id}"]      = q
+                st.session_state[f"quote_meta_{analysis_id}"] = {"customer_name":cust_name,"customer_email":cust_email,"quote_number":quote_num,"due_date":due_date}
+            if f"quote_{analysis_id}" in st.session_state:
+                q    = st.session_state[f"quote_{analysis_id}"]
+                meta = st.session_state.get(f"quote_meta_{analysis_id}",{})
+                st.markdown(f'<div class="quote-total"><div class="q-label">Price Per Part</div><div class="q-price">${q["price_per_part"]:,.2f}</div><div style="margin-top:0.5rem;opacity:0.8;font-size:0.85rem;">Total Job ({q["quantity"]} pcs): <strong>${q["total_job_cost"]:,.2f}</strong></div></div>', unsafe_allow_html=True)
+                st.markdown('<div class="result-card">', unsafe_allow_html=True)
+                for lbl,val,note in [("Machine Cost",f'${q["machine_cost"]:,.2f}',f'{q["machine_hours_per_part"]} hr/part'),("Labor Cost",f'${q["labor_cost"]:,.2f}',f'{q["labor_hours_per_part"]} hr/part'),("Material Cost",f'${q["material_cost"]:,.2f}',q["material_note"]),("Setup Cost",f'${q["setup_cost"]:,.2f}',""),("Overhead",f'${q["overhead_amount"]:,.2f}',""),("Profit",f'${q["profit_amount"]:,.2f}',"")]:
+                    note_html = f' <span style="color:#9ca3af;font-size:0.78rem;">{esc(note)}</span>' if note else ""
+                    st.markdown(f'<div class="quote-row"><span class="qr-label">{lbl}</span><span class="qr-value">{val}{note_html}</span></div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.caption(f"⚠️ {q['disclaimer']}")
+                now_q = datetime.now().strftime("%Y-%m-%d")
+                qlines = ["="*62,"              SHOP QUOTE — DrawingIQ","="*62,f'Quote #:        {meta.get("quote_number") or "N/A"}',f'Date:           {now_q}',f'Delivery:       {meta.get("due_date") or "TBD"}',"-"*62,f'Customer:       {meta.get("customer_name") or "N/A"}',f'Email:          {meta.get("customer_email") or "N/A"}',"-"*62,f'Part:           {result.get("part_name") or "Unknown"}',f'Material:       {result.get("material") or "Unknown"}',f'Drawing File:   {filename}',"-"*62,f'Quantity:       {q["quantity"]} pcs',f'Complexity:     {q["complexity"]}',"-"*62,f'Machine Cost:   ${q["machine_cost"]:,.2f}',f'Labor Cost:     ${q["labor_cost"]:,.2f}',f'Material Cost:  ${q["material_cost"]:,.2f}',f'Setup Cost:     ${q["setup_cost"]:,.2f}',f'Overhead:       ${q["overhead_amount"]:,.2f}',f'Profit:         ${q["profit_amount"]:,.2f}',"="*62,f'PRICE PER PART: ${q["price_per_part"]:,.2f}',f'TOTAL JOB:      ${q["total_job_cost"]:,.2f}',"="*62,"",q["disclaimer"]]
+                st.download_button("⬇ Download Quote (.txt)","\n".join(qlines),file_name=f'quote_{meta.get("quote_number") or "estimate"}.txt',mime="text/plain",use_container_width=True)
 
     with t_rawnotes:
         st.markdown("### 📝 Raw Drawing Content")
@@ -831,6 +892,8 @@ elif page == "📊 Dashboard":
     st.markdown("---")
     st.markdown("### 🏭 Production Queue")
     st.caption("Jobs that have been verified and scheduled. Update status as work progresses.")
+    if queue:
+        st.info("💡 Keep this tab open — queue saves during your session. Refresh will reset it. Full persistence coming soon.")
 
     queue = st.session_state.get("job_queue", [])
     if not queue:
@@ -1533,3 +1596,71 @@ elif page == "🔧 Shop Setup":
                             st.error("Could not delete.")
         else:
             st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>No machines yet</h3><p>Add your machines to enable tolerance feasibility checks.</p></div>', unsafe_allow_html=True)
+
+
+# ── PAGE: TERMS & PRIVACY ─────────────────────────────────────────────────────
+elif page == "📜 Terms & Privacy":
+    from auth import TERMS_TEXT
+    st.markdown("## 📜 Terms of Service & Privacy Policy")
+    st.caption("Last updated: May 2026")
+    tc1, tc2 = st.columns(2)
+    with tc1:
+        st.markdown("### Terms of Service")
+        st.markdown("""
+        **1. Service**
+        DrawingIQ provides AI-powered engineering drawing analysis. Results are reference tools only.
+
+        **2. Accuracy**
+        Always verify AI results before machining. DrawingIQ is not liable for manufacturing errors or scrapped parts.
+
+        **3. Payment**
+        Subscriptions billed monthly. Cancel anytime. No refunds for partial months.
+
+        **4. Your Data**
+        Your drawings and analyses are stored securely in our database. We never share your data with third parties.
+
+        **5. Copyright**
+        Your drawings remain your property. You grant DrawingIQ a license to process them to provide the service.
+
+        **6. Prohibited Use**
+        Do not use DrawingIQ for illegal purposes or to infringe on third-party intellectual property.
+
+        **7. Termination**
+        We reserve the right to terminate accounts that violate these terms.
+
+        **Contact:** support@drawingiq.com
+        """)
+    with tc2:
+        st.markdown("### Privacy Policy")
+        st.markdown("""
+        **What we collect:**
+        - Email address and name
+        - Company name
+        - Uploaded engineering drawings
+        - Analysis results and job data
+        - Usage statistics
+
+        **How we use it:**
+        - To provide the DrawingIQ service
+        - To improve AI accuracy
+        - To send important service updates
+
+        **What we never do:**
+        - Sell your data to third parties
+        - Share drawings with other users
+        - Store your credit card numbers
+        - Use your data for advertising
+
+        **Your rights:**
+        - Delete your account and all data at any time
+        - Export your analysis history at any time
+        - Contact us to correct any information
+
+        **Security:**
+        All data encrypted at rest and in transit.
+        Hosted on Supabase (SOC 2 compliant).
+
+        **Contact:** support@drawingiq.com
+        """)
+    st.markdown("---")
+    st.caption("© 2026 DrawingIQ. All rights reserved. Unauthorized copying or distribution prohibited.")
