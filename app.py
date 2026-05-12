@@ -856,7 +856,9 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            refresh_profile(); profile.update(get_current_profile() or {})
+            refresh_profile()
+            profile = get_current_profile() or {}
+            st.rerun()
     else:
         st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>Upload a drawing to get started</h3><p>Supports mechanical, structural, electrical, architectural, welding drawings.</p></div>', unsafe_allow_html=True)
 
