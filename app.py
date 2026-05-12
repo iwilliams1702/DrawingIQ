@@ -3,8 +3,6 @@
 # or distribution of this software is strictly prohibited.
 
 
-
-
 import streamlit as st
 import os
 import html as html_lib
@@ -892,10 +890,9 @@ elif page == "📊 Dashboard":
     st.markdown("---")
     st.markdown("### 🏭 Production Queue")
     st.caption("Jobs that have been verified and scheduled. Update status as work progresses.")
+    queue = st.session_state.get("job_queue", [])
     if queue:
         st.info("💡 Keep this tab open — queue saves during your session. Refresh will reset it. Full persistence coming soon.")
-
-    queue = st.session_state.get("job_queue", [])
     if not queue:
         st.markdown('<div class="empty-state"><div class="icon">🏭</div><h3>No jobs in queue yet</h3><p>Verify and schedule a job from the Analyze page to see it here.</p></div>', unsafe_allow_html=True)
     else:
