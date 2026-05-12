@@ -5,7 +5,6 @@
 
 
 
-
 """
 database.py — All Supabase DB operations for DrawingIQ
 Tables managed here:
@@ -574,3 +573,48 @@ def get_fai_reports(user_id: str, analysis_id: str = None) -> list[dict]:
     if analysis_id:
         query = query.eq("analysis_id", analysis_id)
     return query.order("created_at", desc=True).execute().data or []
+
+
+# ─── Production Queue (persisted) ─────────────────────────────────────────────
+
+def save_job_to_queue(user_id: str, job: dict) -> dict:
+    db  = get_client()
+    res = db.table("job_queue").upsert({
+        "id":           job.get("id"),
+        "user_id":      user_id,
+        "filename":     job.get("filename",""),
+        "part_name":    job.get("part_name",""),
+        "part_number":  job.get("part_number",""),
+        "material":     job.get("material",""),
+        "machine":      job.get("machine",""),
+        "operator":     job.get("operator",""),
+        "job_number":   job.get("job_number",""),
+        "due_date":     job.get("due_date",""),
+        "priority":     job.get("priority","Normal"),
+        "status":       job.get("status","Pending"),
+        "notes":        job.get("notes",""),
+        "complexity":   job.get("complexity","Unknown"),
+        "verified_by":  job.get("verified_by",""),
+        "verified_at":  job.get("verified_at",""),
+        "analysis_id":  job.get("analysis_id",""),
+        "updated_at":   datetime.utcnow().isoformat(),
+    }).execute()
+    return res.data[0] if res.data else {}
+
+def get_job_queue(user_id: str) -> list[dict]:
+    db  = get_client()
+    res = db.table("job_queue").select("*")            .eq("user_id", user_id)            .neq("status", "Archived")            .order("updated_at", desc=True).execute()
+    return res.data or []
+
+def update_job_status(job_id: str, user_id: str, status: str) -> bool:
+    db  = get_client()
+    res = db.table("job_queue").update({
+        "status":     status,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", job_id).eq("user_id", user_id).execute()
+    return bool(res.data)
+
+def delete_job_from_queue(job_id: str, user_id: str) -> bool:
+    db  = get_client()
+    res = db.table("job_queue").delete()            .eq("id", job_id).eq("user_id", user_id).execute()
+    return bool(res.data)

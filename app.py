@@ -37,6 +37,7 @@ from database import (
     save_quote, get_quotes, get_quote_by_token, update_quote_status,
     save_job_actual, get_job_actuals, find_similar_parts,
     save_fai, get_fai_reports,
+    save_job_to_queue, get_job_queue, update_job_status, delete_job_from_queue,
 )
 from billing import render_pricing_page, render_usage_bar, PLANS, enforce_free_limits
 from analyzer import analyze_image, analyze_pdf_pages, estimate_quote
@@ -632,10 +633,9 @@ def render_result(result, filename, analysis_id=None):
         if vs.get("verified"):
             st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
             if st.button("💾 Save to Production Queue", key=f"vs_save_{vkey}", use_container_width=True):
-                if "job_queue" not in st.session_state:
-                    st.session_state["job_queue"] = []
                 job_entry = {
-                    "id": vkey, "filename": filename,
+                    "id":          vkey,
+                    "filename":    filename,
                     "part_name":   vs["part_name"]   or result.get("part_name","Unknown"),
                     "part_number": vs["part_number"],
                     "material":    vs["material"],
@@ -649,12 +649,19 @@ def render_result(result, filename, analysis_id=None):
                     "verified_by": vs.get("verified_by",""),
                     "verified_at": vs.get("verified_at",""),
                     "complexity":  result.get("estimated_complexity","Unknown"),
-                    "added_at":    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "analysis_id": str(analysis_id or ""),
                 }
-                existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
-                existing.append(job_entry)
-                st.session_state["job_queue"] = existing
-                st.success("✅ Job saved to production queue! View it on the Dashboard.")
+                try:
+                    save_job_to_queue(user["id"], job_entry)
+                    st.success("✅ Job saved to production queue! View it on the Dashboard.")
+                except Exception as e:
+                    # Fallback to session state if DB not set up yet
+                    if "job_queue" not in st.session_state:
+                        st.session_state["job_queue"] = []
+                    existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
+                    existing.append(job_entry)
+                    st.session_state["job_queue"] = existing
+                    st.warning("Saved to session (run SQL migration to persist across sessions).")
 
 
     with t_print:
@@ -890,9 +897,17 @@ elif page == "📊 Dashboard":
     st.markdown("---")
     st.markdown("### 🏭 Production Queue")
     st.caption("Jobs that have been verified and scheduled. Update status as work progresses.")
-    queue = st.session_state.get("job_queue", [])
-    if queue:
-        st.info("💡 Keep this tab open — queue saves during your session. Refresh will reset it. Full persistence coming soon.")
+    # Load from DB first, fallback to session state
+    try:
+        queue = get_job_queue(user["id"])
+        # Also merge any session-state jobs not yet saved
+        ss_queue = st.session_state.get("job_queue", [])
+        db_ids   = {j.get("id") for j in queue}
+        for ssj in ss_queue:
+            if ssj.get("id") not in db_ids:
+                queue.append(ssj)
+    except Exception:
+        queue = st.session_state.get("job_queue", [])
     if not queue:
         st.markdown('<div class="empty-state"><div class="icon">🏭</div><h3>No jobs in queue yet</h3><p>Verify and schedule a job from the Analyze page to see it here.</p></div>', unsafe_allow_html=True)
     else:
@@ -942,12 +957,18 @@ elif page == "📊 Dashboard":
                     key=f"qs_stat_{job['id']}",
                     label_visibility="collapsed")
                 if new_status != job.get("status"):
-                    for j in st.session_state["job_queue"]:
-                        if j["id"] == job["id"]:
-                            j["status"] = new_status
+                    try:
+                        update_job_status(job["id"], user["id"], new_status)
+                    except Exception:
+                        # Fallback session state
+                        for j in st.session_state.get("job_queue",[]):
+                            if j["id"] == job["id"]: j["status"] = new_status
                     st.rerun()
                 if st.button("🗑", key=f"qs_del_{job['id']}"):
-                    st.session_state["job_queue"] = [j for j in st.session_state["job_queue"] if j["id"] != job["id"]]
+                    try:
+                        delete_job_from_queue(job["id"], user["id"])
+                    except Exception:
+                        st.session_state["job_queue"] = [j for j in st.session_state.get("job_queue",[]) if j["id"] != job["id"]]
                     st.rerun()
 
 # PAGE: HISTORY
