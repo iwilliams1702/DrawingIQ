@@ -1,10 +1,3 @@
-# Copyright (c) 2026 Isaiah Williams / DrawingIQ
-# All rights reserved. Unauthorized copying, modification,
-# or distribution of this software is strictly prohibited.
-
-
-
-
 """
 analyzer.py — Core AI analysis engine for DrawingIQ
 Zero-hallucination prompting, strict grounding, quote estimation, and extended feature set.
@@ -156,7 +149,13 @@ WHAT COUNTS AS A FLAG:
 - critical: a conflict between dimensions, a missing required callout (e.g. no tolerance on a feature marked critical), or something that would directly cause a manufacturing failure
 - warning: a callout that is ambiguous, partially illegible, or potentially problematic
 - info: a note or callout that the machinist should be aware of but does not indicate a problem
-- DO NOT flag things that are normal, standard, or assumed — only flag actual visible issues
+
+REQUIRED MISSING FIELD FLAGS — you MUST check for these and add a warning flag for each one that is absent:
+- If material is not specified anywhere on the drawing → add warning flag: category="Missing Material", description="No material is called out on this drawing.", recommendation="Specify material before quoting or machining.", evidence="No material callout found on drawing."
+- If no title block is present → add warning flag: category="Missing Title Block", description="No title block found. Part name, number, revision, and scale are unknown.", recommendation="Request a drawing with a complete title block.", evidence="No title block visible on drawing."
+- If no tolerances are specified on any dimension → add warning flag: category="Missing Tolerances", description="No tolerances are called out on any dimension. Default shop tolerances will apply.", recommendation="Clarify required tolerances with the customer before machining.", evidence="No tolerance values found on any dimension."
+- If no surface finish is called out → add info flag: category="Missing Surface Finish", description="No surface finish callout found.", recommendation="Confirm required surface finish with customer.", evidence="No surface finish symbol or callout visible."
+- If no revision is present → add info flag: category="Missing Revision", description="No revision level found on drawing.", recommendation="Confirm this is the latest revision before machining.", evidence="No revision block or revision letter visible."
 
 Respond ONLY with a valid JSON object. No markdown, no code fences, no preamble."""
 
