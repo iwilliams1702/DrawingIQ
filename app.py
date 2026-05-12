@@ -1,8 +1,6 @@
 # Copyright (c) 2026 Isaiah Williams / DrawingIQ
 # All rights reserved. Unauthorized copying, modification,
 # or distribution of this software is strictly prohibited.
-
-
 import streamlit as st
 import os
 import html as html_lib
@@ -655,13 +653,12 @@ def render_result(result, filename, analysis_id=None):
                     save_job_to_queue(user["id"], job_entry)
                     st.success("✅ Job saved to production queue! View it on the Dashboard.")
                 except Exception as _save_err:
-                    st.error(f"DB save failed: {str(_save_err)[:200]}")
+                    logger.error("Queue save error: %s", _save_err)
                     if "job_queue" not in st.session_state:
                         st.session_state["job_queue"] = []
                     existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
                     existing.append(job_entry)
                     st.session_state["job_queue"] = existing
-                    st.warning("Saved to session only — will reset on refresh.")
 
 
     with t_print:
