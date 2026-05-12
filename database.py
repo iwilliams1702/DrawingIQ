@@ -235,7 +235,7 @@ def increment_usage(user_id: str):
 
 PLAN_LIMITS = {
     "free":       {"analyses_per_month": 5,     "batch_size": 1,  "pdf": False, "team": False, "export": False, "quote": False},
-    "trial":      {"analyses_per_month": 50,    "batch_size": 5,  "pdf": True,  "team": False, "export": True,  "quote": True},
+    "trial":      {"analyses_per_month": 300,   "batch_size": 20, "pdf": True,  "team": True,  "export": True,  "quote": True},
     "starter":    {"analyses_per_month": 50,    "batch_size": 5,  "pdf": True,  "team": False, "export": True,  "quote": True},
     "pro":        {"analyses_per_month": 300,   "batch_size": 20, "pdf": True,  "team": True,  "export": True,  "quote": True},
     "enterprise": {"analyses_per_month": 99999, "batch_size": 50, "pdf": True,  "team": True,  "export": True,  "quote": True},
