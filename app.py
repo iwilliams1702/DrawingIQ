@@ -654,14 +654,14 @@ def render_result(result, filename, analysis_id=None):
                 try:
                     save_job_to_queue(user["id"], job_entry)
                     st.success("✅ Job saved to production queue! View it on the Dashboard.")
-                except Exception as e:
-                    # Fallback to session state if DB not set up yet
+                except Exception as _save_err:
+                    st.error(f"DB save failed: {str(_save_err)[:200]}")
                     if "job_queue" not in st.session_state:
                         st.session_state["job_queue"] = []
                     existing = [j for j in st.session_state["job_queue"] if j["id"] != vkey]
                     existing.append(job_entry)
                     st.session_state["job_queue"] = existing
-                    st.success("✅ Job saved to production queue!")
+                    st.warning("Saved to session only — will reset on refresh.")
 
 
     with t_print:
