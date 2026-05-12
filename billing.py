@@ -371,48 +371,30 @@ def render_pricing_page(user_id: str, email: str, current_plan: str):
             border = "3px solid #f97316" if highlighted else "1px solid #e2e8f0"
             bg     = "white"
 
+            # Build entire card as one HTML block to avoid theme interference
+            popular_html = ""
+            if highlighted:
+                popular_html = "<div style='text-align:center;margin-bottom:10px;'><span style='background:#f97316;color:white;font-size:0.68rem;font-weight:700;padding:3px 14px;border-radius:20px;letter-spacing:0.06em;text-transform:uppercase;'>MOST POPULAR</span></div>"
+
+            features_html = "".join(
+                f"<div style='font-size:0.82rem;color:#374151;margin:4px 0;display:flex;gap:6px;align-items:flex-start;'><span style='color:#16a34a;font-weight:700;flex-shrink:0;'>✓</span><span>{f}</span></div>"
+                for f in plan["features"]
+            )
+
+            border = "3px solid #f97316" if highlighted else "1px solid #e2e8f0"
+            st.markdown(f"""
+            <div style='background:white;border:{border};border-radius:12px;padding:1.25rem;margin-bottom:0.5rem;'>
+                {popular_html}
+                <p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{color};margin:0 0 6px;'>{plan['name']}</p>
+                <p style='font-size:2rem;font-weight:800;color:#0f172a;font-family:monospace;margin:0 0 10px;line-height:1;'>
+                    {plan['price']}<span style='font-size:0.85rem;color:#6b7280;font-weight:400;font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>
+                </p>
+                {features_html}
+            </div>
+            """, unsafe_allow_html=True)
+
             with st.container():
-                # Most popular badge
-                if highlighted:
-                    st.markdown(
-                        "<div style='text-align:center;margin-bottom:8px;'>"
-                        "<span style='background:#f97316;color:white;font-size:0.68rem;"
-                        "font-weight:700;padding:3px 14px;border-radius:20px;"
-                        "letter-spacing:0.06em;text-transform:uppercase;'>MOST POPULAR</span>"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                # Plan name
-                st.markdown(
-                    f"<p style='font-size:0.78rem;font-weight:700;text-transform:uppercase;"
-                    f"letter-spacing:0.08em;color:{color};margin:0 0 4px;'>{plan['name']}</p>",
-                    unsafe_allow_html=True,
-                )
-
-                # Price
-                st.markdown(
-                    f"<p style='font-size:2rem;font-weight:800;color:#0f172a;"
-                    f"font-family:monospace;margin:0;line-height:1;'>"
-                    f"{plan['price']}"
-                    f"<span style='font-size:0.85rem;color:#6b7280;font-weight:400;"
-                    f"font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span>"
-                    f"</p>",
-                    unsafe_allow_html=True,
-                )
-
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-                # Features
-                for f in plan["features"]:
-                    st.markdown(
-                        f"<p style='font-size:0.82rem;color:#374151;margin:3px 0;"
-                        f"display:flex;gap:6px;'>"
-                        f"<span style='color:#16a34a;font-weight:700;'>✓</span> {f}</p>",
-                        unsafe_allow_html=True,
-                    )
-
-                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
                 # Button
                 if is_current:
