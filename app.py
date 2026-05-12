@@ -5,7 +5,6 @@
 
 
 
-
 import streamlit as st
 import os
 import html as html_lib
@@ -609,7 +608,7 @@ def render_result(result, filename, analysis_id=None):
             job_number = st.text_input("Job / Work Order #",key=f"pt_job_{analysis_id}")
             due_date_p = st.text_input("Due Date",key=f"pt_due_{analysis_id}")
         # Pull verified data if available
-        verify_key_p = f"verify_{analysis_id or filename or 'draft'}"
+        verify_key_p = f"vs_{str(analysis_id or filename or 'draft').replace(' ','_')}"
         vs_p = st.session_state.get(verify_key_p, {})
         verified_stamp = ""
         if vs_p.get("verified"):
