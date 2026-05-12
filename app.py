@@ -41,7 +41,7 @@ from database import (
     save_job_actual, get_job_actuals, find_similar_parts,
     save_fai, get_fai_reports,
 )
-from billing import render_pricing_page, render_usage_bar, PLANS
+from billing import render_pricing_page, render_usage_bar, PLANS, enforce_free_limits
 from analyzer import analyze_image, analyze_pdf_pages, estimate_quote
 from pdf_utils import pdf_to_images, image_file_to_b64, get_pdf_page_count
 
@@ -276,8 +276,8 @@ def render_result(result, filename, analysis_id=None):
       <div class="metric-box"><div class="label">Flags</div><div class="value small" style="color:{crit_color}">{len(critical)}🔴 {len(warnings)}⚠️ {len(info_f)}ℹ️</div></div>
     </div>""", unsafe_allow_html=True)
 
-    tabs = st.tabs(["🚩 Flags","📐 Dimensions","🔧 Machinist Notes","📋 Specs","✅ Checklist","💰 Quote","📝 Raw Notes","🖨 Print","⬇ Export"])
-    t_flags,t_dims,t_notes,t_specs,t_checklist,t_quote,t_rawnotes,t_print,t_export = tabs
+    tabs = st.tabs(["🚩 Flags","📐 Dimensions","🔧 Machinist Notes","📋 Specs","✅ Checklist","💰 Quote","📝 Raw Notes","✏️ Verify & Schedule","🖨 Print","⬇ Export"])
+    t_flags,t_dims,t_notes,t_specs,t_checklist,t_quote,t_rawnotes,t_verify,t_print,t_export = tabs
 
     with t_flags:
         if not flags: st.success("✓ No flags raised — drawing looks clean.")
@@ -423,8 +423,23 @@ def render_result(result, filename, analysis_id=None):
         with pt2:
             job_number = st.text_input("Job / Work Order #",key=f"pt_job_{analysis_id}")
             due_date_p = st.text_input("Due Date",key=f"pt_due_{analysis_id}")
+        # Pull verified data if available
+        verify_key_p = f"verify_{analysis_id or filename}"
+        vs_p = st.session_state.get(verify_key_p, {})
+        verified_stamp = ""
+        if vs_p.get("verified"):
+            verified_stamp = f"AI ANALYZED — HUMAN VERIFIED by {vs_p.get('verified_by','')} at {vs_p.get('verified_at','')}"
+            # Auto-fill from verified data if not manually entered
+            if not op_name and vs_p.get("operator"):     op_name    = vs_p["operator"]
+            if not machine_id and vs_p.get("machine"):   machine_id = vs_p["machine"]
+            if not job_number and vs_p.get("job_number"):job_number = vs_p["job_number"]
+            if not due_date_p and vs_p.get("due_date"):  due_date_p = vs_p["due_date"]
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        lines = ["="*62,"       DRAWINGIQ — JOB TRAVELER / SETUP SHEET","="*62,f"File:           {filename}",f"Generated:      {now_str}",f"Job / WO #:     {job_number or 'N/A'}",f"Operator:       {op_name or 'N/A'}",f"Machine / Cell: {machine_id or 'N/A'}",f"Due Date:       {due_date_p or 'N/A'}", "-"*62,f"Part:           {result.get('part_name') or 'Unknown'}",f"Part Number:    {result.get('part_number') or 'Unknown'}",f"Revision:       {result.get('revision') or 'Unknown'}",f"Material:       {result.get('material') or 'Unknown'} ({result.get('material_spec') or 'No spec'})",f"Surface Finish: {result.get('surface_finish') or 'Unknown'}",f"Heat Treat:     {result.get('heat_treatment') or 'None'}",f"Units:          {result.get('units') or 'Unknown'}",f"Complexity:     {result.get('estimated_complexity') or 'Unknown'}",f"Confidence:     {conf}%  |  Clarity: {clarity}","-"*62,f"FLAGS — {len(critical)} critical  {len(warnings)} warnings","-"*62]
+        lines = ["="*62,"       DRAWINGIQ — JOB TRAVELER / SETUP SHEET","="*62,
+                 (verified_stamp if verified_stamp else "AI ANALYZED — AWAITING HUMAN VERIFICATION"),
+                 "="*62,
+                 f"File:           {filename}",f"Generated:      {now_str}",f"Job / WO #:     {job_number or 'N/A'}",f"Operator:       {op_name or 'N/A'}",f"Machine / Cell: {machine_id or 'N/A'}",f"Due Date:       {due_date_p or 'N/A'}", "-"*62,f"Part:           {result.get('part_name') or 'Unknown'}",f"Part Number:    {result.get('part_number') or 'Unknown'}",f"Revision:       {result.get('revision') or 'Unknown'}",f"Material:       {result.get('material') or 'Unknown'} ({result.get('material_spec') or 'No spec'})",f"Surface Finish: {result.get('surface_finish') or 'Unknown'}",f"Heat Treat:     {result.get('heat_treatment') or 'None'}",f"Units:          {result.get('units') or 'Unknown'}",f"Complexity:     {result.get('estimated_complexity') or 'Unknown'}",f"Confidence:     {conf}%  |  Clarity: {clarity}","-"*62,f"FLAGS — {len(critical)} critical  {len(warnings)} warnings","-"*62]
         for f in flags:
             lines.append(f"  [{f.get('severity','').upper()}] {f.get('category','')}: {f.get('description','')}")
             if f.get("recommendation"): lines.append(f"         → {f.get('recommendation')}")
@@ -493,6 +508,10 @@ def check_machine_capability(dims, machines):
 
 if page == "📤 Analyze":
     allowed,reason = can_analyze(profile)
+    if allowed and profile.get("plan","free") == "free":
+        allowed2, reason2 = enforce_free_limits(profile, user.get("email",""))
+        if not allowed2:
+            allowed, reason = allowed2, reason2
     if not allowed:
         st.error(reason)
         st.markdown('<div class="upgrade-banner" style="max-width:500px;margin:1rem auto;"><strong>Monthly limit reached</strong>Upgrade to continue.</div>', unsafe_allow_html=True)
@@ -623,6 +642,69 @@ elif page == "📊 Dashboard":
         for mat,cnt in sorted(mat_counts.items(),key=lambda x:-x[1])[:6]:
             st.markdown(f'<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.83rem;border-bottom:1px solid #f1f5f9;"><span>{esc(mat)}</span><span style="color:#6b7280;font-family:monospace;">{cnt}</span></div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Production Queue ──────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🏭 Production Queue")
+    st.caption("Jobs that have been verified and scheduled. Update status as work progresses.")
+
+    queue = st.session_state.get("job_queue", [])
+    if not queue:
+        st.markdown('<div class="empty-state"><div class="icon">🏭</div><h3>No jobs in queue yet</h3><p>Verify and schedule a job from the Analyze page to see it here.</p></div>', unsafe_allow_html=True)
+    else:
+        priority_colors = {"Emergency":"#dc2626","Rush":"#d97706","Normal":"#2563eb","Low":"#6b7280"}
+        status_colors   = {"Pending":"#6b7280","In Progress":"#2563eb","On Hold":"#d97706","Complete":"#16a34a"}
+
+        # Summary metrics
+        qm1,qm2,qm3,qm4 = st.columns(4)
+        qm1.metric("Total Jobs",    len(queue))
+        qm2.metric("In Progress",   sum(1 for j in queue if j.get("status")=="In Progress"))
+        qm3.metric("Pending",       sum(1 for j in queue if j.get("status")=="Pending"))
+        qm4.metric("Complete",      sum(1 for j in queue if j.get("status")=="Complete"))
+
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+        # Sort by priority then due date
+        priority_order = {"Emergency":0,"Rush":1,"Normal":2,"Low":3}
+        sorted_queue   = sorted(queue, key=lambda x: (priority_order.get(x.get("priority","Normal"),2), x.get("due_date","")))
+
+        for job in sorted_queue:
+            pc     = priority_colors.get(job.get("priority","Normal"),"#2563eb")
+            sc     = status_colors.get(job.get("status","Pending"),"#6b7280")
+            jc1,jc2 = st.columns([5,1])
+            with jc1:
+                st.markdown(f"""
+                <div style="background:white;border:1px solid #dbeafe;border-left:4px solid {pc};border-radius:10px;padding:0.9rem 1.1rem;margin-bottom:0.4rem;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:5px;">
+                        <span style="font-weight:700;color:#0f172a;font-size:0.92rem;">{esc(job.get("part_name","Unknown"))}</span>
+                        <span style="background:{sc}20;color:{sc};font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">{esc(job.get("status","Pending").upper())}</span>
+                        <span style="background:{pc}15;color:{pc};font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">{esc(job.get("priority","Normal").upper())}</span>
+                        <span style="margin-left:auto;font-size:0.75rem;color:#9ca3af;">Due: {esc(job.get("due_date","TBD"))}</span>
+                    </div>
+                    <div style="font-size:0.78rem;color:#6b7280;display:flex;gap:1rem;flex-wrap:wrap;">
+                        <span>📄 {esc(job.get("filename",""))}</span>
+                        <span>⚙ {esc(job.get("machine","No machine"))}</span>
+                        <span>👷 {esc(job.get("operator","Unassigned"))}</span>
+                        <span>🔢 {esc(job.get("job_number","No WO#"))}</span>
+                        <span>🧱 {esc(job.get("material","Unknown"))}</span>
+                        <span>✅ Verified by {esc(job.get("verified_by",""))}</span>
+                    </div>
+                    {('<div style="font-size:0.78rem;color:#374151;margin-top:5px;background:#f8faff;padding:4px 8px;border-radius:4px;">📝 ' + esc(job.get("notes","")) + '</div>') if job.get("notes") else ""}
+                </div>""", unsafe_allow_html=True)
+            with jc2:
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                new_status = st.selectbox("Status", ["Pending","In Progress","On Hold","Complete"],
+                    index=["Pending","In Progress","On Hold","Complete"].index(job.get("status","Pending")),
+                    key=f"qs_stat_{job['id']}",
+                    label_visibility="collapsed")
+                if new_status != job.get("status"):
+                    for j in st.session_state["job_queue"]:
+                        if j["id"] == job["id"]:
+                            j["status"] = new_status
+                    st.rerun()
+                if st.button("🗑", key=f"qs_del_{job['id']}"):
+                    st.session_state["job_queue"] = [j for j in st.session_state["job_queue"] if j["id"] != job["id"]]
+                    st.rerun()
 
 # PAGE: HISTORY
 elif page == "📋 History":
