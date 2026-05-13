@@ -1,6 +1,3 @@
-# Copyright (c) 2026 Isaiah Williams / DrawingIQ
-# All rights reserved. Unauthorized copying, modification,
-# or distribution of this software is strictly prohibited.
 import streamlit as st
 import os
 import html as html_lib
@@ -21,7 +18,7 @@ logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="DrawingIQ", page_icon="⚙", layout="wide",
-                   initial_sidebar_state="expanded", menu_items={})
+                   initial_sidebar_state="expanded")
 
 from auth import (init_session, is_logged_in, get_current_user,
                   get_current_profile, logout, render_auth_page, render_landing_page, refresh_profile)
