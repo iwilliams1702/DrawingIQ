@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="DrawingIQ", page_icon="⚙", layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="expanded", menu_items={})
 
 from auth import (init_session, is_logged_in, get_current_user,
                   get_current_profile, logout, render_auth_page, render_landing_page, refresh_profile)
@@ -858,7 +858,6 @@ if page == "📤 Analyze":
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
             refresh_profile()
             profile = get_current_profile() or {}
-            st.rerun()
     else:
         st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>Upload a drawing to get started</h3><p>Supports mechanical, structural, electrical, architectural, welding drawings.</p></div>', unsafe_allow_html=True)
 
