@@ -122,11 +122,14 @@ if not profile:
     profile = get_current_profile() or {}
 
 # Always fetch fresh profile from database on every page load
-# This ensures plan changes (upgrades/downgrades) reflect immediately
 _fresh = get_profile(user["id"])
 if _fresh:
     profile = _fresh
     st.session_state["profile"] = _fresh
+
+# Rerun once after analysis to update counter
+if st.session_state.pop("_rerun_after_analysis", False):
+    st.rerun()
 
 plan = profile.get("plan", "free")
 
@@ -872,11 +875,12 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            # Refresh profile once after all files processed
+            # Refresh profile and rerun to update counter in nav
             try:
                 _fresh_p = get_profile(user["id"])
                 if _fresh_p:
                     st.session_state["profile"] = _fresh_p
+                    st.session_state["_rerun_after_analysis"] = True
             except Exception:
                 pass
     else:
