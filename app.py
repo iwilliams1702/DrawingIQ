@@ -194,114 +194,32 @@ if _show_onboarding:
 
 # ── Navigation ───────────────────────────────────────────────────────────────
 _forced    = st.session_state.pop("force_page", None)
-NAV_GROUPS = {
-    "Work":    ["📤 Analyze", "📊 Dashboard", "📋 History"],
-    "Tools":   ["🔍 Compare", "✅ Review Checklist", "💰 Quotes", "🔬 FAI Reports", "📈 Job Tracker"],
-    "Setup":   ["🔧 Shop Setup", "👥 Team"],
-    "Account": ["💳 Billing", "⚙ Account", "📜 Terms & Privacy"],
-}
 NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup","👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
 _nav_index = NAV.index(_forced) if _forced in NAV else st.session_state.get("_nav_index", 0)
 
-# Professional pill-style nav
 used = profile.get("analyses_this_month", 0)
 cap  = limits["analyses_per_month"]
-pct  = int(used / max(cap,1) * 100)
-bar_color = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#2563eb"
 
-st.markdown(f"""
-<style>
-.nav-wrap {{
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 0.6rem 1rem;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}}
-.nav-group {{
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex-wrap: wrap;
-}}
-.nav-group-label {{
-    font-size: 0.68rem;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-weight: 600;
-    padding-right: 0.4rem;
-    border-right: 1px solid #e2e8f0;
-    margin-right: 0.25rem;
-}}
-.nav-btn {{
-    font-size: 0.78rem;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: none;
-    background: transparent;
-    color: #6b7280;
-    cursor: pointer;
-    font-weight: 500;
-    white-space: nowrap;
-    text-decoration: none;
-}}
-.nav-btn:hover {{ background: #f1f5f9; color: #0f172a; }}
-.nav-btn.active {{ background: #eff6ff; color: #1d4ed8; font-weight: 600; }}
-.nav-usage {{
-    font-size: 0.78rem;
-    color: #6b7280;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}}
-.nav-usage strong {{ color: #0f172a; }}
-</style>
-""", unsafe_allow_html=True)
-
-# Build nav buttons
-current_page = NAV[_nav_index]
-nav_html = '<div class="nav-wrap">'
-for group, items in NAV_GROUPS.items():
-    nav_html += f'<div class="nav-group"><span class="nav-group-label">{group}</span>'
-    for item in items:
-        active = "active" if item == current_page else ""
-        # Use query param to track page
-        idx_str = str(NAV.index(item))
-        nav_html += f'<span class="nav-btn {active}">{item}</span>'
-    nav_html += '</div>'
-nav_html += f'<div class="nav-usage"><div style="background:#f1f5f9;border-radius:20px;height:6px;width:60px;"><div style="background:{bar_color};border-radius:20px;height:6px;width:{min(pct,100)}%;"></div></div><strong>{used}</strong>/{cap}</div>'
-nav_html += '</div>'
-st.markdown(nav_html, unsafe_allow_html=True)
-
-# Handle nav via query params
-_qp = st.query_params.get("nav", None)
-if _qp is not None:
-    try:
-        _nav_index = int(_qp)
-        st.session_state["_nav_index"] = _nav_index
-        st.query_params.clear()
+# Single clean nav row
+nc1, nc2, nc3 = st.columns([7, 1.5, 1])
+with nc1:
+    page = st.selectbox("", NAV, index=_nav_index, key="main_nav", label_visibility="collapsed")
+    if NAV.index(page) != _nav_index:
+        st.session_state["_nav_index"] = NAV.index(page)
         st.rerun()
-    except Exception:
-        pass
-
-# Fallback selectbox (hidden but functional)
-page = st.selectbox("page", NAV, index=_nav_index, label_visibility="collapsed",
-                    key="main_nav")
-if NAV.index(page) != _nav_index:
-    st.session_state["_nav_index"] = NAV.index(page)
-    st.rerun()
-
-# Sign out button
-if st.button("Sign Out →", key="signout_top"):
-    logout()
+with nc2:
+    pct = int(used/max(cap,1)*100)
+    bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#2563eb"
+    st.markdown(
+        f"<div style='padding-top:0.6rem;font-size:0.8rem;color:#6b7280;'>"
+        f"<div style='background:#f1f5f9;border-radius:20px;height:5px;margin-bottom:3px;'>"
+        f"<div style='background:{bar_c};border-radius:20px;height:5px;width:{min(pct,100)}%;'></div></div>"
+        f"<strong style='color:#0f172a;'>{used}</strong>/{cap} analyses</div>",
+        unsafe_allow_html=True
+    )
+with nc3:
+    if st.button("Sign Out", use_container_width=True, key="signout_btn"):
+        logout()
 
 workspace_id = None
 try:
@@ -312,10 +230,11 @@ try:
             wsd = ws.get("workspaces") or {}
             ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
         if len(ws_options) > 1:
-            workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()),
-                                                    label_visibility="collapsed")]
+            workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()), label_visibility="collapsed")]
 except Exception:
     pass
+
+st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 DISCIPLINES  = ["Auto-Detect","Mechanical / Machining","Structural / Civil","Electrical / Schematic","Architectural","PCB / Electronics","Welding / Fabrication"]
 DETAIL_LEVELS = ["Quick Scan","Standard","Deep Review"]
