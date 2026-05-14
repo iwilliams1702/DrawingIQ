@@ -852,9 +852,8 @@ if page == "📤 Analyze":
                         else:
                             with st.spinner(f"Analyzing {fname}…"): b64,mime=image_file_to_b64(file_bytes,fname); result=analyze_image(b64,mime,discipline,detail_level,_api_key)
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
-                        # Increment usage
+                        # Update session counter (save_analysis already increments DB)
                         try:
-                            increment_usage(user["id"])
                             _sp = st.session_state.get("profile", {})
                             _sp["analyses_this_month"] = _sp.get("analyses_this_month", 0) + 1
                             st.session_state["profile"] = _sp
