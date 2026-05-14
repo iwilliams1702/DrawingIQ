@@ -1,6 +1,3 @@
-# Copyright (c) 2026 Isaiah Williams / DrawingIQ
-# All rights reserved. Unauthorized copying, modification,
-# or distribution of this software is strictly prohibited.
 """
 auth.py — Authentication using Supabase Auth
 Handles: signup, login, logout, password reset, session persistence in Streamlit
@@ -76,6 +73,13 @@ def login(email: str, password: str) -> tuple[bool, str]:
             or email.split("@")[0]   # last-resort fallback: use email prefix
         )
 
+        # Always get fresh profile from DB on login
+        fresh_profile = get_profile(user.id) or {}
+        full_name = (
+            fresh_profile.get("full_name")
+            or user.user_metadata.get("full_name", "")
+            or email.split("@")[0]
+        )
         st.session_state.user = {
             "id":        user.id,
             "email":     user.email,
@@ -83,7 +87,7 @@ def login(email: str, password: str) -> tuple[bool, str]:
         }
         st.session_state.access_token  = session.access_token
         st.session_state.refresh_token = session.refresh_token
-        st.session_state.profile       = profile
+        st.session_state.profile       = fresh_profile
 
         return True, f"Welcome back, {full_name}!"
     except Exception as e:
