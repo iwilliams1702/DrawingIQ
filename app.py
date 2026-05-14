@@ -840,11 +840,7 @@ if page == "📤 Analyze":
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
                         try:
                             increment_usage(user["id"])
-                            _fresh_p = get_profile(user["id"])
-                            if _fresh_p:
-                                profile = _fresh_p
-                                st.session_state["profile"] = _fresh_p
-                        except Exception as _ie:
+                        except Exception:
                             pass
                         render_result(result,fname,saved.get("id"))
                         # ── Repeat part detection ──────────────────────────
@@ -876,11 +872,13 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            # Force fresh profile from DB to update counter
-            _fresh_p = get_profile(user["id"])
-            if _fresh_p:
-                profile = _fresh_p
-                st.session_state["profile"] = _fresh_p
+            # Refresh profile once after all files processed
+            try:
+                _fresh_p = get_profile(user["id"])
+                if _fresh_p:
+                    st.session_state["profile"] = _fresh_p
+            except Exception:
+                pass
     else:
         st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>Upload a drawing to get started</h3><p>Supports mechanical, structural, electrical, architectural, welding drawings.</p></div>', unsafe_allow_html=True)
 
