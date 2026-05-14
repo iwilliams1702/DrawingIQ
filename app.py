@@ -192,49 +192,86 @@ if _show_onboarding:
             st.session_state["onboarding_dismissed"] = True
             st.rerun()
 
-# ── Navigation ───────────────────────────────────────────────────────────────
+# ── Sidebar navigation ───────────────────────────────────────────────────────
 _forced    = st.session_state.pop("force_page", None)
-NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist","💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup","👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
+NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review Checklist",
+       "💰 Quotes","🔬 FAI Reports","📈 Job Tracker","🔧 Shop Setup",
+       "👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
 _nav_index = NAV.index(_forced) if _forced in NAV else st.session_state.get("_nav_index", 0)
 
 used = profile.get("analyses_this_month", 0)
 cap  = limits["analyses_per_month"]
 
-# Single clean nav row
-nc1, nc2, nc3 = st.columns([7, 1.5, 1])
-with nc1:
-    page = st.selectbox("", NAV, index=_nav_index, key="main_nav", label_visibility="collapsed")
-    if NAV.index(page) != _nav_index:
-        st.session_state["_nav_index"] = NAV.index(page)
-        st.rerun()
-with nc2:
-    pct = int(used/max(cap,1)*100)
-    bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#2563eb"
+workspace_id = None
+
+with st.sidebar:
+    st.markdown("### ⚙ DrawingIQ")
+    st.markdown("---")
+
+    # Usage bar
+    pct   = int(used / max(cap,1) * 100)
+    bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#3b82f6"
     st.markdown(
-        f"<div style='padding-top:0.6rem;font-size:0.8rem;color:#6b7280;'>"
-        f"<div style='background:#f1f5f9;border-radius:20px;height:5px;margin-bottom:3px;'>"
-        f"<div style='background:{bar_c};border-radius:20px;height:5px;width:{min(pct,100)}%;'></div></div>"
-        f"<strong style='color:#0f172a;'>{used}</strong>/{cap} analyses</div>",
+        f"<div style='font-size:0.8rem;color:#7aa2d4;margin-bottom:3px;'>"
+        f"Usage: <strong style='color:#e2e8f0;'>{used}</strong>/{cap} this month</div>"
+        f"<div style='background:#1e3a5f;border-radius:4px;height:5px;margin-bottom:8px;'>"
+        f"<div style='background:{bar_c};border-radius:4px;height:5px;width:{min(pct,100)}%;'></div></div>",
         unsafe_allow_html=True
     )
-with nc3:
-    if st.button("Sign Out", use_container_width=True, key="signout_btn"):
+
+    if plan in ("free","trial") and pct >= 70:
+        st.markdown(
+            "<div style='background:#dc2626;color:white;border-radius:6px;"
+            "padding:6px 10px;font-size:0.78rem;text-align:center;margin-bottom:8px;'>"
+            "Upgrade for more analyses</div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # Workspace selector
+    try:
+        workspaces = get_user_workspaces(user["id"])
+        if workspaces and limits.get("team"):
+            ws_options = {"Personal": None}
+            for ws in workspaces:
+                wsd = ws.get("workspaces") or {}
+                ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
+            if len(ws_options) > 1:
+                workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()))]
+                st.markdown("---")
+    except Exception:
+        pass
+
+    # Navigation
+    page = st.radio("Navigate", NAV, index=_nav_index, label_visibility="collapsed")
+    if NAV.index(page) != _nav_index:
+        st.session_state["_nav_index"] = NAV.index(page)
+
+    st.markdown("---")
+
+    # Trial countdown
+    _created = profile.get("created_at","")
+    if _created and plan in ("free","trial"):
+        try:
+            from datetime import timezone as _tz
+            _cdt   = datetime.fromisoformat(_created.replace("Z","+00:00"))
+            _dleft = max(0, 30 - (datetime.now(_tz.utc) - _cdt).days)
+            if _dleft > 0:
+                _bpct  = int((30-_dleft)/30*100)
+                _bcol  = "#dc2626" if _dleft<=5 else "#d97706" if _dleft<=10 else "#3b82f6"
+                st.markdown(
+                    f"<div style='font-size:0.78rem;color:#7aa2d4;margin-bottom:3px;'>"
+                    f"Free trial: <strong style='color:#e2e8f0;'>{_dleft} days left</strong></div>"
+                    f"<div style='background:#1e3a5f;border-radius:4px;height:4px;margin-bottom:6px;'>"
+                    f"<div style='background:{_bcol};border-radius:4px;height:4px;width:{_bpct}%;'></div></div>",
+                    unsafe_allow_html=True
+                )
+        except Exception:
+            pass
+
+    if st.button("Sign Out", use_container_width=True, key="signout_sidebar"):
         logout()
-
-workspace_id = None
-try:
-    workspaces = get_user_workspaces(user["id"])
-    if workspaces and limits.get("team"):
-        ws_options = {"Personal": None}
-        for ws in workspaces:
-            wsd = ws.get("workspaces") or {}
-            ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
-        if len(ws_options) > 1:
-            workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()), label_visibility="collapsed")]
-except Exception:
-    pass
-
-st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 DISCIPLINES  = ["Auto-Detect","Mechanical / Machining","Structural / Civil","Electrical / Schematic","Architectural","PCB / Electronics","Welding / Fabrication"]
 DETAIL_LEVELS = ["Quick Scan","Standard","Deep Review"]
