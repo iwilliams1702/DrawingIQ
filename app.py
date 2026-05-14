@@ -824,8 +824,19 @@ if page == "📤 Analyze":
                 with cols[i%5]:
                     if not f.name.lower().endswith(".pdf"): prev=f.read(); f.seek(0); st.image(prev,use_container_width=True,caption=f.name[:15])
                     else: st.markdown(f"📄 `{f.name[:15]}`")
+        # Show cached results from previous run
+        for uf_check in uploaded:
+            _rk = f"cached_result_{uf_check.name}"
+            if _rk in st.session_state:
+                _cr, _cf, _ci = st.session_state[_rk]
+                with st.expander(f"📄 {_cf}", expanded=True):
+                    render_result(_cr, _cf, _ci)
+
         st.markdown("---")
         if st.button(f"⚙ Analyze {len(uploaded)} Drawing(s)",type="primary",use_container_width=True):
+            # Clear old cached results
+            for uf_c in uploaded:
+                st.session_state.pop(f"cached_result_{uf_c.name}", None)
             for uf in uploaded:
                 fname=uf.name; file_bytes=uf.read(); size_kb=len(file_bytes)/1024
                 if size_kb>MAX_FILE_MB*1024: st.error(f"{fname} too large ({size_kb/1024:.1f} MB). Max {MAX_FILE_MB} MB."); continue
@@ -839,7 +850,7 @@ if page == "📤 Analyze":
                         else:
                             with st.spinner(f"Analyzing {fname}…"): b64,mime=image_file_to_b64(file_bytes,fname); result=analyze_image(b64,mime,discipline,detail_level,_api_key)
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
-                        # Increment and update session counter immediately
+                        # Increment usage
                         try:
                             increment_usage(user["id"])
                             _sp = st.session_state.get("profile", {})
@@ -847,6 +858,9 @@ if page == "📤 Analyze":
                             st.session_state["profile"] = _sp
                         except Exception:
                             pass
+                        # Cache result so it survives rerun
+                        _res_key = f"cached_result_{fname}"
+                        st.session_state[_res_key] = (result, fname, saved.get("id"))
                         render_result(result,fname,saved.get("id"))
                         # ── Repeat part detection ──────────────────────────
                         try:
@@ -877,13 +891,14 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            # Update counter in session state immediately
+            # Refresh profile from DB after batch
             try:
                 _fresh_p = get_profile(user["id"])
                 if _fresh_p:
                     st.session_state["profile"] = _fresh_p
             except Exception:
                 pass
+            st.rerun()
     else:
         st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>Upload a drawing to get started</h3><p>Supports mechanical, structural, electrical, architectural, welding drawings.</p></div>', unsafe_allow_html=True)
 
