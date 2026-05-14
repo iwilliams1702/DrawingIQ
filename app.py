@@ -23,7 +23,7 @@ st.set_page_config(page_title="DrawingIQ", page_icon="⚙", layout="wide",
 from auth import (init_session, is_logged_in, get_current_user,
                   get_current_profile, logout, render_auth_page, render_landing_page, refresh_profile)
 from database import (
-    get_profile, save_analysis, get_analyses, get_analysis_by_id,
+    get_profile, save_analysis, get_analyses, get_analysis_by_id, increment_usage,
     delete_analysis, get_plan_limits, can_analyze,
     create_workspace, get_user_workspaces, get_workspace_members,
     invite_member, remove_member, get_usage_stats, PLAN_LIMITS, update_profile,
@@ -838,6 +838,10 @@ if page == "📤 Analyze":
                         else:
                             with st.spinner(f"Analyzing {fname}…"): b64,mime=image_file_to_b64(file_bytes,fname); result=analyze_image(b64,mime,discipline,detail_level,_api_key)
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
+                        try:
+                            increment_usage(user["id"])
+                        except Exception as _ie:
+                            pass
                         render_result(result,fname,saved.get("id"))
                         # ── Repeat part detection ──────────────────────────
                         try:
