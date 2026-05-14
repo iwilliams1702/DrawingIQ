@@ -204,30 +204,6 @@ cap  = limits["analyses_per_month"]
 pct  = int(used/max(cap,1)*100)
 bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#3b82f6"
 
-# Clean nav bar - always visible, never collapses
-st.markdown(f"""
-<div style="background:#020d1f;border-bottom:1px solid rgba(30,100,255,0.2);
-            padding:0.5rem 1rem;margin:-1rem -1rem 1rem -1rem;
-            display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <div style="font-size:0.75rem;color:#4a6fa5;white-space:nowrap;">
-        <div style="background:#1e3a5f;border-radius:4px;height:4px;width:80px;margin-bottom:2px;">
-            <div style="background:{bar_c};border-radius:4px;height:4px;width:{min(pct,100)}%;"></div>
-        </div>
-        <span style="color:#7aa2d4;"><strong style="color:#e2e8f0;">{used}</strong>/{cap} analyses</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Navigation tabs
-page = st.radio("", NAV, index=_nav_index, horizontal=True,
-                label_visibility="collapsed", key="main_nav_radio")
-if NAV.index(page) != _nav_index:
-    st.session_state["_nav_index"] = NAV.index(page)
-
-# Sign out in a small corner
-if st.button("Sign Out", key="signout_main"):
-    logout()
-
 workspace_id = None
 try:
     workspaces = get_user_workspaces(user["id"])
@@ -237,12 +213,30 @@ try:
             wsd = ws.get("workspaces") or {}
             ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
         if len(ws_options) > 1:
-            workspace_id = ws_options[st.selectbox("Workspace", list(ws_options.keys()),
-                                                    label_visibility="collapsed")]
+            workspace_id = ws_options.get(list(ws_options.keys())[0])
 except Exception:
     pass
 
-st.markdown("---")
+# Clean single nav bar
+nav_c1, nav_c2, nav_c3 = st.columns([5, 2, 1])
+with nav_c1:
+    page = st.selectbox("", NAV, index=_nav_index, key="main_nav",
+                        label_visibility="collapsed")
+    if NAV.index(page) != _nav_index:
+        st.session_state["_nav_index"] = NAV.index(page)
+with nav_c2:
+    st.markdown(
+        f"<div style='padding:0.6rem 0;font-size:0.82rem;color:#6b7280;'>"
+        f"<div style='background:#f1f5f9;border-radius:4px;height:5px;margin-bottom:3px;'>"
+        f"<div style='background:{bar_c};border-radius:4px;height:5px;width:{min(pct,100)}%;'></div></div>"
+        f"<strong style='color:#0f172a;'>{used}</strong> / {cap} analyses used</div>",
+        unsafe_allow_html=True
+    )
+with nav_c3:
+    if st.button("Sign Out", use_container_width=True, key="signout_main"):
+        logout()
+
+st.markdown("<hr style='margin:0.5rem 0 1rem 0;border-color:#e2e8f0;'>", unsafe_allow_html=True)
 
 DISCIPLINES  = ["Auto-Detect","Mechanical / Machining","Structural / Civil","Electrical / Schematic","Architectural","PCB / Electronics","Welding / Fabrication"]
 DETAIL_LEVELS = ["Quick Scan","Standard","Deep Review"]
