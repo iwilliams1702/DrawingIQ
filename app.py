@@ -121,12 +121,21 @@ if not profile:
     refresh_profile()
     profile = get_current_profile() or {}
 
-plan   = profile.get("plan","free")
-# Dev account override - always give full access to the owner
+# Always fetch fresh profile from database on every page load
+# This ensures plan changes (upgrades/downgrades) reflect immediately
+_fresh = get_profile(user["id"])
+if _fresh:
+    profile = _fresh
+    st.session_state["profile"] = _fresh
+
+plan = profile.get("plan", "free")
+
+# Owner always gets Pro
 _owner_email = "isaiah.williams2002@outlook.com"
-if profile.get("email","") == _owner_email and plan == "free":
+if profile.get("email", "") == _owner_email:
     plan = "pro"
     profile["plan"] = "pro"
+
 limits = get_effective_limits(profile)
 user_name = (user.get("full_name") or profile.get("full_name") or
              profile.get("email","") or user.get("email","")).strip() or "User"
@@ -225,11 +234,24 @@ with nav_c1:
     if NAV.index(page) != _nav_index:
         st.session_state["_nav_index"] = NAV.index(page)
 with nav_c2:
+    # Trial countdown for free users
+    _trial_html = ""
+    _created = profile.get("created_at","")
+    if _created and plan in ("free","trial"):
+        try:
+            from datetime import timezone as _tz
+            _cdt   = datetime.fromisoformat(_created.replace("Z","+00:00"))
+            _dleft = max(0, 30 - (datetime.now(_tz.utc) - _cdt).days)
+            _tcol  = "#dc2626" if _dleft<=5 else "#d97706" if _dleft<=10 else "#3b82f6"
+            _trial_html = f"<div style='font-size:0.72rem;color:{_tcol};font-weight:600;'>{_dleft} trial days left</div>"
+        except Exception:
+            pass
     st.markdown(
-        f"<div style='padding:0.6rem 0;font-size:0.82rem;color:#6b7280;'>"
+        f"<div style='padding:0.4rem 0;font-size:0.82rem;color:#6b7280;'>"
         f"<div style='background:#f1f5f9;border-radius:4px;height:5px;margin-bottom:3px;'>"
         f"<div style='background:{bar_c};border-radius:4px;height:5px;width:{min(pct,100)}%;'></div></div>"
-        f"<strong style='color:#1d4ed8;font-size:0.9rem;'>{used}</strong><span style='color:#9ca3af;'> / {cap} used</span></div>",
+        f"<strong style='color:#1d4ed8;font-size:0.9rem;'>{used}</strong><span style='color:#9ca3af;'> / {cap} used</span>"
+        f"{_trial_html}</div>",
         unsafe_allow_html=True
     )
 with nav_c3:
@@ -846,8 +868,11 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            refresh_profile()
-            profile = get_current_profile() or {}
+            # Force fresh profile from DB to update counter
+            _fresh_p = get_profile(user["id"])
+            if _fresh_p:
+                profile = _fresh_p
+                st.session_state["profile"] = _fresh_p
     else:
         st.markdown('<div class="empty-state"><div class="icon">⚙</div><h3>Upload a drawing to get started</h3><p>Supports mechanical, structural, electrical, architectural, welding drawings.</p></div>', unsafe_allow_html=True)
 

@@ -1,6 +1,3 @@
-# Copyright (c) 2026 Isaiah Williams / DrawingIQ
-# All rights reserved. Unauthorized copying, modification,
-# or distribution of this software is strictly prohibited.
 """
 database.py — All Supabase DB operations for DrawingIQ
 Tables managed here:
