@@ -229,7 +229,7 @@ with nav_c2:
         f"<div style='padding:0.6rem 0;font-size:0.82rem;color:#6b7280;'>"
         f"<div style='background:#f1f5f9;border-radius:4px;height:5px;margin-bottom:3px;'>"
         f"<div style='background:{bar_c};border-radius:4px;height:5px;width:{min(pct,100)}%;'></div></div>"
-        f"<strong style='color:#0f172a;'>{used}</strong> / {cap} analyses used</div>",
+        f"<strong style='color:#1d4ed8;font-size:0.9rem;'>{used}</strong><span style='color:#9ca3af;'> / {cap} used</span></div>",
         unsafe_allow_html=True
     )
 with nav_c3:
