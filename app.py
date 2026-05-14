@@ -208,7 +208,7 @@ NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review
        "👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
 _nav_index = NAV.index(_forced) if _forced in NAV else st.session_state.get("_nav_index", 0)
 
-used = profile.get("analyses_this_month", 0)
+used = st.session_state.get("profile", profile).get("analyses_this_month", 0)
 cap  = limits["analyses_per_month"]
 pct  = int(used/max(cap,1)*100)
 bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#3b82f6"
@@ -840,6 +840,10 @@ if page == "📤 Analyze":
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
                         try:
                             increment_usage(user["id"])
+                            _fresh_p = get_profile(user["id"])
+                            if _fresh_p:
+                                profile = _fresh_p
+                                st.session_state["profile"] = _fresh_p
                         except Exception as _ie:
                             pass
                         render_result(result,fname,saved.get("id"))
