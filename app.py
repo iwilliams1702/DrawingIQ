@@ -127,9 +127,7 @@ if _fresh:
     profile = _fresh
     st.session_state["profile"] = _fresh
 
-# Rerun once after analysis to update counter
-if st.session_state.pop("_rerun_after_analysis", False):
-    st.rerun()
+
 
 plan = profile.get("plan", "free")
 
@@ -211,7 +209,7 @@ NAV = ["📤 Analyze","📊 Dashboard","📋 History","🔍 Compare","✅ Review
        "👥 Team","💳 Billing","⚙ Account","📜 Terms & Privacy"]
 _nav_index = NAV.index(_forced) if _forced in NAV else st.session_state.get("_nav_index", 0)
 
-used = st.session_state.get("profile", profile).get("analyses_this_month", 0)
+used = st.session_state.get("profile", {}).get("analyses_this_month", profile.get("analyses_this_month", 0))
 cap  = limits["analyses_per_month"]
 pct  = int(used/max(cap,1)*100)
 bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#3b82f6"
@@ -841,8 +839,12 @@ if page == "📤 Analyze":
                         else:
                             with st.spinner(f"Analyzing {fname}…"): b64,mime=image_file_to_b64(file_bytes,fname); result=analyze_image(b64,mime,discipline,detail_level,_api_key)
                         saved=save_analysis(user_id=user["id"],filename=fname,result=result,file_size_kb=size_kb,analysis_mode=discipline,detail_level=detail_level,workspace_id=workspace_id)
+                        # Increment and update session counter immediately
                         try:
                             increment_usage(user["id"])
+                            _sp = st.session_state.get("profile", {})
+                            _sp["analyses_this_month"] = _sp.get("analyses_this_month", 0) + 1
+                            st.session_state["profile"] = _sp
                         except Exception:
                             pass
                         render_result(result,fname,saved.get("id"))
@@ -875,12 +877,11 @@ if page == "📤 Analyze":
                     except Exception as e:
                         st.error(friendly_error(e))
                         if st.button("↩ Retry",key=f"retry_{fname}"): st.rerun()
-            # Refresh profile and rerun to update counter in nav
+            # Update counter in session state immediately
             try:
                 _fresh_p = get_profile(user["id"])
                 if _fresh_p:
                     st.session_state["profile"] = _fresh_p
-                    st.session_state["_rerun_after_analysis"] = True
             except Exception:
                 pass
     else:
