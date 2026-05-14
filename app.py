@@ -833,7 +833,9 @@ if page == "📤 Analyze":
                     render_result(_cr, _cf, _ci)
 
         st.markdown("---")
-        if st.button(f"⚙ Analyze {len(uploaded)} Drawing(s)",type="primary",use_container_width=True):
+        _analyzing = st.session_state.pop("_analyzing", False)
+        if st.button(f"⚙ Analyze {len(uploaded)} Drawing(s)",type="primary",use_container_width=True) and not _analyzing:
+            st.session_state["_analyzing"] = True
             # Clear old cached results
             for uf_c in uploaded:
                 st.session_state.pop(f"cached_result_{uf_c.name}", None)
