@@ -426,10 +426,9 @@ font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span></div>
                     else:
                         try:
                             url = create_checkout_session(user_id, plan["key"], email)
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                            st.info(f"Redirecting… [Click here if not redirected]({url})")
-                        except ValueError as e:
-                            st.error(str(e))
+                            st.link_button(f"🔒 Secure Checkout — {plan['name']}", url, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Payment error: {str(e)[:100]}")
 
     if current_plan != "free":
         st.markdown("---")
