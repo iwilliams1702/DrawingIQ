@@ -201,7 +201,7 @@ workspace_id = None
 # Clean single nav bar
 nav_c1, nav_c2, nav_c3 = st.columns([5, 2, 1])
 with nav_c1:
-    page = st.selectbox("", NAV, index=_nav_index, key="main_nav",
+    page = st.selectbox("Navigation", NAV, index=_nav_index, key="main_nav",
                         label_visibility="collapsed")
     if NAV.index(page) != _nav_index:
         st.session_state["_nav_index"] = NAV.index(page)
