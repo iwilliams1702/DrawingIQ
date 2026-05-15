@@ -121,14 +121,6 @@ if not profile:
     refresh_profile()
     profile = get_current_profile() or {}
 
-# Always fetch fresh profile from database on every page load
-_fresh = get_profile(user["id"])
-if _fresh:
-    profile = _fresh
-    st.session_state["profile"] = _fresh
-
-
-
 plan = profile.get("plan", "free")
 
 # Owner always gets Pro
