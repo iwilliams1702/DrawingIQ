@@ -44,8 +44,7 @@ init_session()
 # CSS
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-html,body,[class*="css"]{font-family:'Inter',sans-serif;}
+html,body,[class*="css"]{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
 #MainMenu,footer,[data-testid="stToolbar"],.stDeployButton,
 button[title="View app in Streamlit Community Cloud"]{display:none!important;}
 header[data-testid="stHeader"]{background:transparent;}
