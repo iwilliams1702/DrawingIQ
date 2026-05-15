@@ -281,6 +281,31 @@ def friendly_error(exc):
 def esc(v):
     return html_lib.escape(str(v) if v is not None else "Unknown")
 
+
+def upgrade_prompt(feature: str, min_plan: str = "Pro", price: str = "$50/month") -> None:
+    """Show a professional upgrade prompt for locked features."""
+    plan_colors = {"Pro": "#d97706", "Shop": "#7c3aed"}
+    color = plan_colors.get(min_plan, "#2563eb")
+    st.markdown(f"""
+    <div style='background:white;border:2px solid {color};border-radius:12px;
+                padding:2rem;text-align:center;margin:1rem 0;'>
+        <div style='font-size:2rem;margin-bottom:0.5rem;'>🔒</div>
+        <div style='font-size:1.1rem;font-weight:700;color:#0f172a;margin-bottom:0.5rem;'>
+            {feature} — {min_plan} Plan Required
+        </div>
+        <div style='color:#6b7280;font-size:0.88rem;margin-bottom:1.25rem;'>
+            Upgrade to {min_plan} ({price}) to unlock this feature.
+        </div>
+        <div style='font-size:0.82rem;color:{color};font-weight:600;'>
+            Your 30-day free trial includes full access. After that, upgrade to keep it.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button(f"🚀 Upgrade to {min_plan} — {price}", type="primary",
+                 use_container_width=True, key=f"upg_{feature.replace(' ','_')}"):
+        st.session_state["force_page"] = "💳 Billing"
+        st.rerun()
+
 def build_checklist(result):
     checks = []
     dims  = result.get("dimensions", [])
@@ -504,7 +529,10 @@ def render_result(result, filename, analysis_id=None):
 
 
     with t_verify:
-        st.markdown("### ✏️ Verify & Schedule")
+        if not limits.get("verify"):
+            upgrade_prompt("Verify & Schedule", "Pro", "$50/month")
+        else:
+            st.markdown("### ✏️ Verify & Schedule")
         st.caption("Review every AI-extracted value, correct anything wrong, assign to a machine, and schedule the job.")
         st.markdown("---")
 
@@ -785,13 +813,46 @@ def check_machine_capability(dims, machines):
     return risks
 
 if page == "📤 Analyze":
-    allowed,reason = can_analyze(profile)
+    allowed, reason = can_analyze(profile)
     if allowed and profile.get("plan","free") == "free":
-        allowed2, reason2 = enforce_free_limits(profile, user.get("email",""))
-        if not allowed2:
-            allowed, reason = allowed2, reason2
+        try:
+            allowed2, reason2 = enforce_free_limits(profile, user.get("email",""))
+            if not allowed2:
+                allowed, reason = allowed2, reason2
+        except Exception:
+            pass
     if not allowed:
-        st.error(reason)
+        from datetime import date
+        today = date.today()
+        if today.month == 12:
+            reset = date(today.year+1, 1, 1)
+        else:
+            reset = date(today.year, today.month+1, 1)
+        reset_str = reset.strftime("%B 1st")
+        st.markdown(f"""
+        <div style='background:white;border:2px solid #dc2626;border-radius:12px;
+                    padding:2rem;text-align:center;margin:1rem 0;'>
+            <div style='font-size:2rem;margin-bottom:0.5rem;'>⛔</div>
+            <div style='font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:0.5rem;'>
+                Monthly Limit Reached
+            </div>
+            <div style='color:#6b7280;font-size:0.9rem;margin-bottom:0.5rem;'>
+                {reason}
+            </div>
+            <div style='color:#9ca3af;font-size:0.82rem;margin-bottom:1.5rem;'>
+                Your limit resets on <strong>{reset_str}</strong>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🚀 Upgrade to Pro — $50/month", type="primary",
+                         use_container_width=True, key="upgrade_from_limit"):
+                st.session_state["force_page"] = "💳 Billing"
+                st.rerun()
+        with col2:
+            st.info(f"✨ Free trial includes 30 days of full Pro access for new accounts.")
+        st.stop()
         st.markdown('<div class="upgrade-banner" style="max-width:500px;margin:1rem auto;"><strong>Monthly limit reached</strong>Upgrade to continue.</div>', unsafe_allow_html=True)
         if st.button("View Upgrade Options",type="primary"): st.session_state["force_page"]="💳 Billing"; st.rerun()
         st.stop()
@@ -1090,6 +1151,9 @@ elif page == "📋 History":
 
 # PAGE: COMPARE
 elif page == "🔍 Compare":
+    if not limits.get("quote"):
+        upgrade_prompt("Compare Drawings", "Pro", "$50/month")
+        st.stop()
     st.markdown("## 🔍 Side-by-Side Drawing Comparison")
     st.caption("Spot revision differences, material changes, or validate re-quotes.")
     with st.spinner("Loading…"): analyses=get_analyses(user["id"],limit=100,workspace_id=workspace_id)
@@ -1146,6 +1210,9 @@ elif page == "✅ Review Checklist":
 
 # PAGE: TEAM
 elif page == "👥 Team":
+    if not limits.get("team"):
+        upgrade_prompt("Team Workspaces", "Pro", "$50/month")
+        st.stop()
     st.markdown("## Team Workspaces")
     if not limits.get("team"):
         st.markdown('<div class="upgrade-banner" style="max-width:600px;"><strong>Team workspaces require Pro or Enterprise</strong></div>', unsafe_allow_html=True)
