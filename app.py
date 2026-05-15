@@ -62,7 +62,7 @@ html,body,[class*="css"]{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,
 header[data-testid="stHeader"]{background:transparent;}
 [data-testid="stSidebar"]{display:none!important;}
 .block-container{padding-top:0!important;max-width:100%!important;}
-.main,.stApp,[data-testid="stAppViewContainer"]{background:#f8fafc!important;}
+.main,.stApp,[data-testid="stAppViewContainer"]{background:#080c14!important;}
 
 /* HEADER */
 .diq-header{background:#080c14;padding:0 2rem;height:60px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);margin:-1rem -1rem 0 -1rem;}
