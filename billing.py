@@ -15,7 +15,7 @@ def _get_secret(key: str, default: str = "") -> str:
         return os.getenv(key, default)
 from database import get_profile, update_profile, get_client, PLAN_LIMITS
 
-stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
+# stripe.api_key set per-call to ensure st.secrets is available
 
 PLANS = {
     "pro": {
@@ -92,6 +92,7 @@ FREE_PLAN = {
 
 
 def create_checkout_session(user_id: str, plan_key: str, email: str) -> str | None:
+    stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
     plan = PLANS.get(plan_key)
     if not plan or not plan.get("stripe_price_id") or "REPLACE_ME" in plan["stripe_price_id"]:
         raise ValueError(
@@ -118,6 +119,7 @@ def create_checkout_session(user_id: str, plan_key: str, email: str) -> str | No
 
 
 def create_portal_session(user_id: str) -> str | None:
+    stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
     profile = get_profile(user_id)
     if not profile or not profile.get("stripe_customer_id"):
         raise ValueError("No Stripe customer found. Please upgrade first.")
@@ -353,6 +355,7 @@ BILLING_CSS = """
 
 
 def render_pricing_page(user_id: str, email: str, current_plan: str):
+    stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
     stripe_key = _get_secret("STRIPE_SECRET_KEY")
     plan_order = ["free", "pro", "shop", "enterprise"]
 
