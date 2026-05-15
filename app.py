@@ -127,6 +127,39 @@ _owner_email = "isaiah.williams2002@outlook.com"
 if profile.get("email", "") == _owner_email:
     plan = "pro"
     profile["plan"] = "pro"
+else:
+    # Auto-sync Stripe subscription on first load of each session
+    if not st.session_state.get("_stripe_synced"):
+        st.session_state["_stripe_synced"] = True
+        try:
+            import stripe as _stripe
+            from billing import _get_secret
+            _stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
+            if _stripe.api_key and "REPLACE" not in _stripe.api_key:
+                _email = profile.get("email","")
+                _custs = _stripe.Customer.list(email=_email, limit=1)
+                if _custs.data:
+                    _cid  = _custs.data[0].id
+                    _subs = _stripe.Subscription.list(customer=_cid, status="active", limit=1)
+                    if _subs.data:
+                        _sub      = _subs.data[0]
+                        _price_id = _sub["items"]["data"][0]["price"]["id"]
+                        _pro_p    = _get_secret("STRIPE_PRICE_PRO")
+                        _shop_p   = _get_secret("STRIPE_PRICE_SHOP")
+                        _new_plan = "shop" if _price_id == _shop_p else "pro" if _price_id == _pro_p else plan
+                        if _new_plan != plan:
+                            update_profile(user["id"], {"plan": _new_plan, "stripe_customer_id": _cid, "stripe_subscription_id": _sub.id})
+                            profile["plan"] = _new_plan
+                            plan = _new_plan
+                            st.session_state["profile"] = profile
+                    elif plan not in ("free","trial"):
+                        # No active sub but plan shows paid - downgrade
+                        update_profile(user["id"], {"plan": "free"})
+                        profile["plan"] = "free"
+                        plan = "free"
+                        st.session_state["profile"] = profile
+        except Exception:
+            pass
 
 limits = get_effective_limits(profile)
 user_name = (user.get("full_name") or profile.get("full_name") or
