@@ -10,9 +10,11 @@ import streamlit as st
 def _get_secret(key: str, default: str = "") -> str:
     """Get secret from Streamlit secrets or environment variable."""
     try:
-        return st.secrets.get(key, os.getenv(key, default))
+        if hasattr(st, "secrets") and key in st.secrets:
+            return str(st.secrets[key])
     except Exception:
-        return os.getenv(key, default)
+        pass
+    return os.getenv(key, default)
 from database import get_profile, update_profile, get_client, PLAN_LIMITS
 
 # stripe.api_key set per-call to ensure st.secrets is available
