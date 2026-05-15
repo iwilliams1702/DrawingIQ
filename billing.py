@@ -94,7 +94,12 @@ FREE_PLAN = {
 
 
 def create_checkout_session(user_id: str, plan_key: str, email: str) -> str | None:
-    stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
+    _key = _get_secret("STRIPE_SECRET_KEY")
+    if not _key:
+        raise ValueError("STRIPE_SECRET_KEY is empty. Check Streamlit secrets.")
+    if len(_key) < 20:
+        raise ValueError(f"STRIPE_SECRET_KEY looks wrong: '{_key[:10]}...' — Check Streamlit secrets.")
+    stripe.api_key = _key
     plan = PLANS.get(plan_key)
     if not plan or not plan.get("stripe_price_id") or "REPLACE_ME" in plan["stripe_price_id"]:
         raise ValueError(
