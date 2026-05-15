@@ -2,9 +2,18 @@ import streamlit as st
 import os
 import html as html_lib
 
-for key in ["OPENAI_API_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","APP_URL","SUPABASE_SERVICE_KEY"]:
-    if key in st.secrets:
-        os.environ[key] = st.secrets[key]
+_KEYS = [
+    "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_KEY", "APP_URL", "STRIPE_SECRET_KEY",
+    "STRIPE_PRICE_PRO", "STRIPE_PRICE_SHOP", "STRIPE_WEBHOOK_SECRET"
+]
+for key in _KEYS:
+    if not os.environ.get(key):
+        try:
+            if key in st.secrets:
+                os.environ[key] = st.secrets[key]
+        except Exception:
+            pass
 
 import json, io, csv, logging
 from datetime import datetime, date, timedelta
