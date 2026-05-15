@@ -6,38 +6,30 @@ Handles: checkout sessions, customer portal, webhook processing, plan upgrades
 import os
 import stripe
 import streamlit as st
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Get secret from Streamlit secrets or environment variable."""
+    try:
+        return st.secrets.get(key, os.getenv(key, default))
+    except Exception:
+        return os.getenv(key, default)
 from database import get_profile, update_profile, get_client, PLAN_LIMITS
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = _get_secret("STRIPE_SECRET_KEY")
 
 PLANS = {
-    "starter": {
-        "name":           "Starter",
-        "price":          "$50",
-        "period":         "/ month",
-        "stripe_price_id": os.getenv("STRIPE_PRICE_STARTER", "price_REPLACE_ME_STARTER"),
-        "color":          "#0369a1",
-        "features": [
-            "50 analyses / month",
-            "Full quote engine + customer portal",
-            "Job traveler & setup sheet",
-            "Pre-machining checklist",
-            "PDF support",
-            "CSV & JSON export",
-            "Single user",
-            "Email support",
-        ],
-    },
     "pro": {
         "name":           "Pro",
-        "price":          "$150",
+        "price":          "$50",
         "period":         "/ month",
-        "stripe_price_id": os.getenv("STRIPE_PRICE_PRO", "price_REPLACE_ME_PRO"),
+        "stripe_price_id": _get_secret("STRIPE_PRICE_PRO", "price_REPLACE_ME_PRO"),
         "color":          "#d97706",
         "highlighted":    True,
         "features": [
             "300 analyses / month",
-            "Everything in Starter",
+            "Full quote engine + customer portal",
+            "Job traveler & setup sheet",
+            "Pre-machining checklist",
             "FAI report generation",
             "Job tracker (actual vs estimated)",
             "Machine capability profiles",
@@ -45,7 +37,24 @@ PLANS = {
             "Repeat part detection",
             "Team workspaces (up to 5 seats)",
             "Revision comparison",
+            "PDF support + CSV export",
             "Priority support",
+        ],
+    },
+    "shop": {
+        "name":           "Shop",
+        "price":          "$150",
+        "period":         "/ month",
+        "stripe_price_id": _get_secret("STRIPE_PRICE_SHOP", "price_REPLACE_ME_SHOP"),
+        "color":          "#7c3aed",
+        "features": [
+            "Unlimited analyses",
+            "Everything in Pro",
+            "Unlimited team seats",
+            "White label quotes",
+            "API access",
+            "Dedicated support",
+            "SLA guarantee",
         ],
     },
     "enterprise": {
@@ -53,19 +62,18 @@ PLANS = {
         "price":          "Custom",
         "period":         "",
         "stripe_price_id": None,
-        "color":          "#7c3aed",
+        "color":          "#0f172a",
         "features": [
-            "Unlimited analyses",
-            "Unlimited team seats",
-            "White label option",
-            "API access",
+            "Everything in Shop",
+            "Multi-location support",
             "SSO / SAML",
+            "Custom AI training",
             "Dedicated account manager",
-            "SLA guarantee",
-            "Custom integrations",
+            "On-site onboarding",
         ],
     },
 }
+
 
 FREE_PLAN = {
     "name":    "Free",
@@ -78,6 +86,7 @@ FREE_PLAN = {
         "Basic flags & dimensions",
         "No quote engine",
         "No export",
+        "30-day free trial included",
     ],
 }
 
@@ -94,8 +103,8 @@ def create_checkout_session(user_id: str, plan_key: str, email: str) -> str | No
     params = {
         "mode":       "subscription",
         "line_items": [{"price": plan["stripe_price_id"], "quantity": 1}],
-        "success_url": os.getenv("APP_URL", "https://drawingiq.streamlit.app") + "?billing=success",
-        "cancel_url":  os.getenv("APP_URL", "https://drawingiq.streamlit.app") + "?billing=cancel",
+        "success_url": _get_secret("APP_URL", "https://drawingiq.streamlit.app") + "?billing=success",
+        "cancel_url":  _get_secret("APP_URL", "https://drawingiq.streamlit.app") + "?billing=cancel",
         "metadata":    {"user_id": user_id, "plan": plan_key},
         "client_reference_id": user_id,
         "subscription_data":   {"metadata": {"user_id": user_id, "plan": plan_key}},
@@ -114,13 +123,13 @@ def create_portal_session(user_id: str) -> str | None:
         raise ValueError("No Stripe customer found. Please upgrade first.")
     session = stripe.billing_portal.Session.create(
         customer=profile["stripe_customer_id"],
-        return_url=os.getenv("APP_URL", "https://drawingiq.streamlit.app"),
+        return_url=_get_secret("APP_URL", "https://drawingiq.streamlit.app"),
     )
     return session.url
 
 
 def handle_webhook(payload: bytes, sig_header: str) -> dict:
-    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    webhook_secret = _get_secret("STRIPE_WEBHOOK_SECRET")
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except stripe.error.SignatureVerificationError:
@@ -344,16 +353,16 @@ BILLING_CSS = """
 
 
 def render_pricing_page(user_id: str, email: str, current_plan: str):
-    stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
-    plan_order = ["free", "starter", "pro", "enterprise"]
+    stripe_key = _get_secret("STRIPE_SECRET_KEY")
+    plan_order = ["free", "pro", "shop", "enterprise"]
 
     st.markdown("## Upgrade DrawingIQ")
     st.caption("Upgrade or downgrade anytime. Cancel anytime. No contracts.")
 
     plan_list = [
         {"key": "free",       **FREE_PLAN,                              "color": "#6b7280"},
-        {"key": "starter",    **{k:v for k,v in PLANS["starter"].items()}},
         {"key": "pro",        **{k:v for k,v in PLANS["pro"].items()}},
+        {"key": "shop",       **{k:v for k,v in PLANS["shop"].items()}},
         {"key": "enterprise", **{k:v for k,v in PLANS["enterprise"].items()}},
     ]
 
@@ -401,7 +410,8 @@ font-family:sans-serif;margin-left:4px;'>{plan.get('period','')}</span></div>
             else:
                 label = "Upgrade" if plan_order.index(plan["key"]) > plan_order.index(current_plan) else "Change Plan"
                 if st.button(label, key=f"btn_{plan['key']}", type="primary", use_container_width=True):
-                    if not stripe_key or "REPLACE_ME" in os.getenv(f"STRIPE_PRICE_{plan['key'].upper()}", "REPLACE_ME"):
+                    _price_id = _get_secret(f"STRIPE_PRICE_{plan['key'].upper()}")
+                    if not stripe_key or not _price_id or "REPLACE_ME" in _price_id:
                         st.error("Payment processing coming soon. Contact support@drawingiq.com to upgrade.")
                     else:
                         try:
