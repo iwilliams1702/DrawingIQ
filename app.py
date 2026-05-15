@@ -155,25 +155,16 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Onboarding for new users ─────────────────────────────────────────────────
-_analyses_total = profile.get("analyses_total", 0)
-_has_machines   = False
-_has_materials  = False
-try:
-    _has_machines  = len(get_machines(user["id"])) > 0
-    _has_materials = len(get_materials(user["id"])) > 0
-except Exception:
-    pass
-
+_analyses_total  = profile.get("analyses_total", 0)
 _onboarding_done = st.session_state.get("onboarding_dismissed", False)
-_show_onboarding = (not _onboarding_done and _analyses_total == 0
-                    and not _has_machines and not _has_materials)
+_show_onboarding = not _onboarding_done and _analyses_total == 0
 
 if _show_onboarding:
     with st.expander("👋 Welcome to DrawingIQ — Get started in 4 steps", expanded=True):
         oc1,oc2,oc3,oc4 = st.columns(4)
         steps = [
-            ("⚙","Add your machines","Go to Shop Setup → Machine Profiles. Add your CNC machines and their tolerance capabilities.",_has_machines),
-            ("🧱","Add your materials","Go to Shop Setup → Material Library. Add your common materials and prices for auto-quoting.",_has_materials),
+            ("⚙","Add your machines","Go to Shop Setup → Machine Profiles. Add your CNC machines and their tolerance capabilities.",False),
+            ("🧱","Add your materials","Go to Shop Setup → Material Library. Add your common materials and prices for auto-quoting.",False),
             ("📐","Analyze your first drawing","Go to Analyze, upload any engineering drawing, and run your first analysis.",_analyses_total>0),
             ("💰","Generate your first quote","After analyzing a drawing, go to the Quote tab and run a cost estimate.",False),
         ]
@@ -207,17 +198,6 @@ pct  = int(used/max(cap,1)*100)
 bar_c = "#dc2626" if pct>=90 else "#d97706" if pct>=70 else "#3b82f6"
 
 workspace_id = None
-try:
-    workspaces = get_user_workspaces(user["id"])
-    if workspaces and limits.get("team"):
-        ws_options = {"Personal": None}
-        for ws in workspaces:
-            wsd = ws.get("workspaces") or {}
-            ws_options[wsd.get("name","Unnamed")] = wsd.get("id")
-        if len(ws_options) > 1:
-            workspace_id = ws_options.get(list(ws_options.keys())[0])
-except Exception:
-    pass
 
 # Clean single nav bar
 nav_c1, nav_c2, nav_c3 = st.columns([5, 2, 1])
